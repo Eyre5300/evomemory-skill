@@ -61,6 +61,10 @@ python scripts/search.py experiment "transformer training strategy" --top-k 10
 
 # Manually push a memory (usually auto-pushed during research)
 python scripts/push.py ideation --goal "..." --title "..." --core-idea "..."
+
+# Push EvoScientist-style JSON files (same field packing as web upload)
+# From repo root (where .env lives), after browse + share:
+python scripts/push_from_json.py --base-url https://evomem.club 1.json 2.json 3.json 4.json
 ```
 
 **Search API** (`POST /memory/ideation/search` / `experiment/search`): body includes `query_text` (or client `query_embedding` + `embedding_model_id`), `top_k` (1–100), `min_similarity` (0–1). Response lists items with `similarity_score` (higher = more similar).
@@ -113,6 +117,8 @@ Memories pushed to the Hub use these fields. Skills and EvoScientist should use 
 | `search.py experiment <query> [--top-k N] [--min-similarity S]` | Semantic search experiment (top N) |
 | `push.py ideation ...` | Push an ideation memory |
 | `push.py experiment ...` | Push an experiment memory |
+| `push_from_json.py [--base-url URL] <file.json> ...` | Push JSON exports (Ideation/Experiment) to Hub |
+| `upload_from_json_browser.py --token <jwt> <json...> [--headed]` | Browser automation fallback upload (headless by default) |
 
 ## Integration with EvoScientist
 

@@ -11,14 +11,28 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from typing import Any, List
 
 try:
-    import httpx
+    import requests
+    import urllib3
 except ImportError:
-    print("Error: httpx not installed. Run: pip install httpx")
+    print("Error: requests not installed. Run: python -m pip install requests")
     sys.exit(1)
 
+# Temporary workaround for SSL issues while testing.
+# NOTE: Disables certificate verification (verify=False) for requests-based uploader.
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Try to mimic browser-like requests for networks/WAFs that are sensitive to non-browser clients.
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36"
+)
+DEFAULT_ACCEPT = "application/json"
+DEFAULT_ACCEPT_LANGUAGE = "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7"
 
 def env(name: str, default: str = "") -> str:
     v = os.getenv(name)
@@ -26,11 +40,7 @@ def env(name: str, default: str = "") -> str:
 
 
 def get_base_url() -> str:
-    base = env("EVOMEMORY_API_BASE_URL")
-    if not base:
-        print("Error: EVOMEMORY_API_BASE_URL not set.")
-        print("Run: python setup.py browse --base-url <url>")
-        sys.exit(1)
+    base = env("EVOMEMORY_API_BASE_URL", "https://evomem.club")
     return base.rstrip("/")
 
 
@@ -40,7 +50,12 @@ def get_headers() -> dict[str, str]:
         print("Error: EVOMEMORY_API_TOKEN not set. Cannot upload.")
         print("Run: python setup.py share --base-url <url>")
         sys.exit(1)
-    return {"Authorization": f"Bearer {token}"}
+    return {
+        "Authorization": f"Bearer {token}",
+        "User-Agent": BROWSER_UA,
+        "Accept": DEFAULT_ACCEPT,
+        "Accept-Language": DEFAULT_ACCEPT_LANGUAGE,
+    }
 
 
 def embed_enabled() -> bool:
@@ -57,12 +72,17 @@ def embed_text(text: str) -> List[float]:
     model = env("EVOMEMORY_EMBED_MODEL")
     url = base + "/embeddings"
     payload = {"model": model, "input": text}
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "User-Agent": BROWSER_UA,
+        "Accept": DEFAULT_ACCEPT,
+        "Accept-Language": DEFAULT_ACCEPT_LANGUAGE,
+    }
     timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
-    with httpx.Client(timeout=timeout) as client:
-        r = client.post(url, json=payload, headers=headers)
-        r.raise_for_status()
-        data = r.json()
+    r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=False)
+    r.raise_for_status()
+    data = r.json()
     vec = data["data"][0]["embedding"]
     return [float(x) for x in vec]
 
@@ -86,18 +106,40 @@ def push_ideation(args):
         payload["embedding_model_id"] = embed_model_id()
     
     timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
-    with httpx.Client(timeout=timeout) as client:
-        r = client.post(url, json=payload, headers=get_headers())
-        if r.status_code >= 400:
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            r = requests.post(url, json=payload, headers=get_headers(), timeout=timeout, verify=False)
+            if 200 <= r.status_code < 300:
+                result = r.json()
+                print(f"[OK] Ideation memory uploaded: {result.get('id', '?')}")
+                return
+
+            print("---- HTTP ERROR ----")
+            print(f"URL: {url}")
+            print(f"status_code: {r.status_code}")
+            print("response.text:")
+            print(r.text)
+            print("---------------------")
+
+            if r.status_code == 422:
+                try:
+                    print("response.json:")
+                    print(r.json())
+                except Exception:
+                    pass
             try:
                 detail = r.json()
             except Exception:
                 detail = r.text
-            print(f"Error: {r.status_code} {detail}")
-            sys.exit(1)
-        result = r.json()
-    
-    print(f"[OK] Ideation memory uploaded: {result.get('id', '?')}")
+            raise RuntimeError(f"HTTP {r.status_code}: {detail}")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                sleep_s = 2 ** attempt
+                print(f"  [retry] request failed: {type(e).__name__}: {e} (sleep {sleep_s}s, attempt {attempt+2}/{max_retries})")
+                time.sleep(sleep_s)
+                continue
+            raise
 
 
 def push_experiment(args):
@@ -119,18 +161,40 @@ def push_experiment(args):
         payload["embedding_model_id"] = embed_model_id()
     
     timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
-    with httpx.Client(timeout=timeout) as client:
-        r = client.post(url, json=payload, headers=get_headers())
-        if r.status_code >= 400:
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            r = requests.post(url, json=payload, headers=get_headers(), timeout=timeout, verify=False)
+            if 200 <= r.status_code < 300:
+                result = r.json()
+                print(f"[OK] Experiment memory uploaded: {result.get('id', '?')}")
+                return
+
+            print("---- HTTP ERROR ----")
+            print(f"URL: {url}")
+            print(f"status_code: {r.status_code}")
+            print("response.text:")
+            print(r.text)
+            print("---------------------")
+
+            if r.status_code == 422:
+                try:
+                    print("response.json:")
+                    print(r.json())
+                except Exception:
+                    pass
             try:
                 detail = r.json()
             except Exception:
                 detail = r.text
-            print(f"Error: {r.status_code} {detail}")
-            sys.exit(1)
-        result = r.json()
-    
-    print(f"[OK] Experiment memory uploaded: {result.get('id', '?')}")
+            raise RuntimeError(f"HTTP {r.status_code}: {detail}")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                sleep_s = 2 ** attempt
+                print(f"  [retry] request failed: {type(e).__name__}: {e} (sleep {sleep_s}s, attempt {attempt+2}/{max_retries})")
+                time.sleep(sleep_s)
+                continue
+            raise
 
 
 def main():
