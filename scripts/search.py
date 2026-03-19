@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Search EvoMemory Hub for similar memories.
+"""Search EvoMemory Hub for similar memories (vector similarity on server).
 
 Usage:
     python search.py ideation "machine learning optimization"
     python search.py experiment "transformer training strategy"
+    python search.py ideation "..." --top-k 20 --min-similarity 0.35
+
+Env defaults (optional):
+    EVOMEMORY_SEARCH_TOP_K, EVOMEMORY_SEARCH_MIN_SIMILARITY
 """
 
 from __future__ import annotations
@@ -12,7 +16,7 @@ import argparse
 import json
 import os
 import sys
-from typing import Any, List, Optional
+from typing import Any, List
 
 try:
     import httpx
@@ -66,11 +70,32 @@ def embed_text(text: str) -> List[float]:
     return [float(x) for x in vec]
 
 
-def search(kind: str, query: str, top_k: int = 5) -> List[dict[str, Any]]:
+def default_top_k() -> int:
+    raw = env("EVOMEMORY_SEARCH_TOP_K", "5")
+    try:
+        k = int(raw)
+        return max(1, min(100, k))
+    except ValueError:
+        return 5
+
+
+def default_min_similarity() -> float:
+    raw = env("EVOMEMORY_SEARCH_MIN_SIMILARITY", "0")
+    try:
+        v = float(raw)
+        return max(0.0, min(1.0, v))
+    except ValueError:
+        return 0.0
+
+
+def search(kind: str, query: str, top_k: int, min_similarity: float) -> List[dict[str, Any]]:
     base = get_base_url()
     url = f"{base}/memory/{kind}/search"
     
-    payload: dict[str, Any] = {"top_k": top_k}
+    payload: dict[str, Any] = {
+        "top_k": top_k,
+        "min_similarity": min_similarity,
+    }
     
     if embed_enabled():
         print(f"Generating embedding with {env('EVOMEMORY_EMBED_MODEL')}...")
@@ -119,18 +144,38 @@ def format_experiment(item: dict[str, Any], idx: int) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Search EvoMemory Hub")
+    parser = argparse.ArgumentParser(
+        description="Semantic search EvoMemory Hub (cosine similarity via pgvector; top results ordered by similarity)"
+    )
     parser.add_argument("kind", choices=["ideation", "experiment"], help="Memory type")
     parser.add_argument("query", help="Search query text")
-    parser.add_argument("--top-k", type=int, default=5, help="Number of results")
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Return top N most similar (1–100). Default: env EVOMEMORY_SEARCH_TOP_K or 5",
+    )
+    parser.add_argument(
+        "--min-similarity",
+        type=float,
+        default=None,
+        metavar="S",
+        help="Minimum similarity score 0.0–1.0 (filters weak matches). Default: env EVOMEMORY_SEARCH_MIN_SIMILARITY or 0",
+    )
     parser.add_argument("--json", action="store_true", help="Output raw JSON")
     
     args = parser.parse_args()
+    top_k = args.top_k if args.top_k is not None else default_top_k()
+    top_k = max(1, min(100, top_k))
+    min_sim = args.min_similarity if args.min_similarity is not None else default_min_similarity()
+    min_sim = max(0.0, min(1.0, min_sim))
     
     print(f"Searching {args.kind} memories for: {args.query}")
+    print(f"(top_k={top_k}, min_similarity={min_sim})")
     print()
     
-    results = search(args.kind, args.query, args.top_k)
+    results = search(args.kind, args.query, top_k, min_sim)
     
     if args.json:
         print(json.dumps(results, indent=2, ensure_ascii=False))

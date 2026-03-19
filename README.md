@@ -48,11 +48,11 @@ This will:
 ### Search Community Memories
 
 ```bash
-# Search ideation memories
+# Semantic search (server ranks by vector similarity; default top 5)
 python scripts/search.py ideation "machine learning optimization"
 
-# Search experiment memories
-python scripts/search.py experiment "transformer training strategy"
+# Return top 20, require similarity >= 0.35
+python scripts/search.py experiment "transformer training strategy" --top-k 20 --min-similarity 0.35
 ```
 
 ### Push Your Memories

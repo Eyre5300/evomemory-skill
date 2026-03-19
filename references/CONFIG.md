@@ -58,6 +58,12 @@ This will ask:
 | `EVOMEMORY_EMBED_API_KEY` | No | - | Embedding API key |
 | `EVOMEMORY_EMBED_MODEL` | No | - | Embedding model name |
 | `EVOMEMORY_EMBEDDING_MODEL_ID` | No | Same as model | Model bucket identifier |
+| `EVOMEMORY_SEARCH_TOP_K` | No | 5 | Default for `scripts/search.py` `--top-k` (1–100) |
+| `EVOMEMORY_SEARCH_MIN_SIMILARITY` | No | 0 | Default for `scripts/search.py` `--min-similarity` (0–1) |
+
+## Semantic search (`search.py`)
+
+Hub 使用 pgvector 按**相似度**排序，返回最相近的前 `top_k` 条（最大 100），可用 `min_similarity` 过滤弱相关结果。未配置客户端 embedding 时由服务端对 `query_text` 做向量化；配置了 `EVOMEMORY_EMBED_*` 时由客户端生成 `query_embedding` 并需指定 `embedding_model_id`（与上传时同桶）。
 
 ## Client-Side Embedding
 

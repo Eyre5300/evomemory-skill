@@ -39,24 +39,31 @@ After setup, these variables are stored in `.env`:
 | `EVOMEMORY_EMBED_API_KEY` | Optional | Your embedding API key |
 | `EVOMEMORY_EMBED_MODEL` | Optional | Embedding model name |
 | `EVOMEMORY_EMBEDDING_MODEL_ID` | Optional | Model bucket ID for same-model search |
+| `EVOMEMORY_SEARCH_TOP_K` | Optional | Default `--top-k` for `search.py` (1–100) |
+| `EVOMEMORY_SEARCH_MIN_SIMILARITY` | Optional | Default `--min-similarity` for `search.py` (0–1) |
 
 ### 3. Usage
 
 Once configured, you can:
 
-- **Search memories**: Find similar ideas/experiments from the community
+- **Search memories**: Semantic (vector) similarity on the Hub; returns the **top N** hits (you choose `N`), ordered by similarity
 - **Push memories**: Share your research findings (requires token)
 
 ```bash
-# Search for similar ideas
+# Search for similar ideas (default top 5, min_similarity 0)
 python scripts/search.py ideation "machine learning optimization"
 
+# Top 20 matches, drop weak hits (similarity below 0.35)
+python scripts/search.py ideation "federated learning" --top-k 20 --min-similarity 0.35
+
 # Search for experiments
-python scripts/search.py experiment "transformer training strategy"
+python scripts/search.py experiment "transformer training strategy" --top-k 10
 
 # Manually push a memory (usually auto-pushed during research)
 python scripts/push.py ideation --goal "..." --title "..." --core-idea "..."
 ```
+
+**Search API** (`POST /memory/ideation/search` / `experiment/search`): body includes `query_text` (or client `query_embedding` + `embedding_model_id`), `top_k` (1–100), `min_similarity` (0–1). Response lists items with `similarity_score` (higher = more similar).
 
 ## Memory Keywords (API & EvoScientist)
 
@@ -102,8 +109,8 @@ Memories pushed to the Hub use these fields. Skills and EvoScientist should use 
 |---------|-------------|
 | `setup.py browse` | Configure browse-only access |
 | `setup.py share` | Register/login and enable uploads |
-| `search.py ideation <query>` | Search ideation memories |
-| `search.py experiment <query>` | Search experiment memories |
+| `search.py ideation <query> [--top-k N] [--min-similarity S]` | Semantic search ideation (top N) |
+| `search.py experiment <query> [--top-k N] [--min-similarity S]` | Semantic search experiment (top N) |
 | `push.py ideation ...` | Push an ideation memory |
 | `push.py experiment ...` | Push an experiment memory |
 
