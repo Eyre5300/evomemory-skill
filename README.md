@@ -18,17 +18,23 @@ Or install from local path:
 
 ## Quick Setup
 
-### Browse Only (Read-only access)
+### 1) Choose Mode (no domain shown)
 
 ```bash
 cd /path/to/evomemory-skill/scripts
-python setup.py browse --base-url https://evomem.eyre.vip
+python setup.py wizard
 ```
 
-### Share Mode (Upload your memories)
+You will be asked:
+- Which mode: **Browse (read-only)** or **Share (upload)**
+- Your **Hub URL** (you can paste it when you want; no default is shown)
+
+### 2) Switch later (Browse → Share)
+
+If you started with Browse, you can enable Share any time later by running:
 
 ```bash
-python setup.py share --base-url https://evomem.eyre.vip
+python setup.py share
 ```
 
 This will:
@@ -68,7 +74,7 @@ python scripts/push.py experiment \
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `EVOMEMORY_API_BASE_URL` | Yes | Hub URL (e.g., `https://evomem.eyre.vip`) |
+| `EVOMEMORY_API_BASE_URL` | Yes | Hub URL (e.g., `https://your-hub-domain`) |
 | `EVOMEMORY_API_TOKEN` | For uploads | JWT token from register/login |
 | `EVOMEMORY_EMBED_BASE_URL` | Optional | Your embedding API (e.g., OpenAI) |
 | `EVOMEMORY_EMBED_API_KEY` | Optional | Your embedding API key |
@@ -91,12 +97,11 @@ This ensures:
 - Search only matches memories from the same model bucket
 - Better semantic accuracy
 
-## Default Hub
+## Hub URL
 
-The default community hub is hosted at:
-
-- **URL**: `https://evomem.eyre.vip`
-- **Docs**: `https://evomem.eyre.vip/docs`
+This skill does not hardcode any hub domain. You can connect to:
+- Your own private hub
+- A community hub shared by the maintainer (if they provide the URL)
 
 ## License
 

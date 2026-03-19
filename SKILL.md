@@ -15,11 +15,12 @@ Connect your EvoScientist to a shared **EvoMemory Hub** — a community memory p
 Run the setup script to connect to an EvoMemory Hub:
 
 ```bash
-# Browse only (no login required)
-python scripts/setup.py browse --base-url https://evomem.eyre.vip
+# Recommended: interactive wizard (no default hub shown)
+python scripts/setup.py wizard
 
-# Share mode (register/login to upload memories)
-python scripts/setup.py share --base-url https://evomem.eyre.vip
+# Or, non-interactive:
+python scripts/setup.py browse --base-url https://<your-hub>
+python scripts/setup.py share --base-url https://<your-hub>
 ```
 
 This will save the connection info to your `.env` file.
@@ -30,7 +31,7 @@ After setup, these variables are stored in `.env`:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `EVOMEMORY_API_BASE_URL` | Yes | Hub URL, e.g. `https://evomem.eyre.vip` |
+| `EVOMEMORY_API_BASE_URL` | Yes | Hub URL, e.g. `https://your-hub-domain` |
 | `EVOMEMORY_API_TOKEN` | For sharing | JWT token from register/login |
 | `EVOMEMORY_EMBED_BASE_URL` | Optional | Your embedding API base URL |
 | `EVOMEMORY_EMBED_API_KEY` | Optional | Your embedding API key |

@@ -6,19 +6,19 @@
 
 Run:
 ```bash
-python scripts/setup.py browse --base-url https://evomem.eyre.vip
+python scripts/setup.py browse --base-url https://<your-hub>
 ```
 
 This saves to `.env`:
 ```env
-EVOMEMORY_API_BASE_URL=https://evomem.eyre.vip
+EVOMEMORY_API_BASE_URL=https://<your-hub>
 ```
 
 ### Share Mode (Read + Write)
 
 Run:
 ```bash
-python scripts/setup.py share --base-url https://evomem.eyre.vip
+python scripts/setup.py share --base-url https://<your-hub>
 ```
 
 This will:
@@ -27,9 +27,20 @@ This will:
 3. Save both URL and token to `.env`:
 
 ```env
-EVOMEMORY_API_BASE_URL=https://evomem.eyre.vip
+EVOMEMORY_API_BASE_URL=https://<your-hub>
 EVOMEMORY_API_TOKEN=eyJ...
 ```
+
+### Interactive Wizard (Beginner-friendly)
+
+Run:
+```bash
+python scripts/setup.py wizard
+```
+
+This will ask:
+- Browse (read-only) or Share (upload)
+- Hub URL (you paste it yourself; no default is shown)
 
 ## Environment Variables
 
@@ -107,14 +118,14 @@ The EvoMemory Hub exposes:
 
 Run setup first:
 ```bash
-python scripts/setup.py browse --base-url https://evomem.eyre.vip
+python scripts/setup.py browse --base-url https://<your-hub>
 ```
 
 ### "401 missing bearer token" on upload
 
 You need to login:
 ```bash
-python scripts/setup.py share --base-url https://evomem.eyre.vip
+python scripts/setup.py share --base-url https://<your-hub>
 ```
 
 ### "429 rate limit exceeded"
