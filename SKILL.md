@@ -8,19 +8,21 @@ tags: [memory, sharing, collaboration, community]
 
 Connect your EvoScientist to a shared **EvoMemory Hub** — a community memory pool where researchers can browse, share, and learn from each other's research ideas and experiment conclusions.
 
+**Default Hub:** `https://evomem.club` (deployed from `vps_bundle`).
+
 ## Quick Start
 
 ### 1. Configure Connection
 
-Run the setup script to connect to an EvoMemory Hub:
+Run the setup script to connect to the EvoMemory Hub (default: evomem.club):
 
 ```bash
-# Recommended: interactive wizard (no default hub shown)
+# Recommended: interactive wizard
 python scripts/setup.py wizard
 
-# Or, non-interactive:
-python scripts/setup.py browse --base-url https://<your-hub>
-python scripts/setup.py share --base-url https://<your-hub>
+# Or, connect to the default public hub (evomem.club):
+python scripts/setup.py browse --base-url https://evomem.club
+python scripts/setup.py share --base-url https://evomem.club
 ```
 
 This will save the connection info to your `.env` file.
@@ -31,7 +33,7 @@ After setup, these variables are stored in `.env`:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `EVOMEMORY_API_BASE_URL` | Yes | Hub URL, e.g. `https://your-hub-domain` |
+| `EVOMEMORY_API_BASE_URL` | Yes | Hub URL, e.g. `https://evomem.club` |
 | `EVOMEMORY_API_TOKEN` | For sharing | JWT token from register/login |
 | `EVOMEMORY_EMBED_BASE_URL` | Optional | Your embedding API base URL |
 | `EVOMEMORY_EMBED_API_KEY` | Optional | Your embedding API key |
@@ -56,10 +58,42 @@ python scripts/search.py experiment "transformer training strategy"
 python scripts/push.py ideation --goal "..." --title "..." --core-idea "..."
 ```
 
+## Memory Keywords (API & EvoScientist)
+
+Memories pushed to the Hub use these fields. Skills and EvoScientist should use the same schema when pushing.
+
+### Ideation memory (upload: `POST /memory/ideation/upload`)
+
+| Keyword | Required | Description |
+|---------|----------|-------------|
+| `goal` | Yes | Research goal or objective |
+| `type` | Yes | `promising` or `failed` |
+| `title` | Yes | Short title for the idea |
+| `core_idea` | Yes | Core idea summary |
+| `requirements` | Yes | Key requirements / assumptions / constraints |
+| `embedding` | No | Optional client-generated vector |
+| `embedding_model_id` | No | Model bucket id when using client embedding |
+
+### Experiment memory (upload: `POST /memory/experiment/upload`)
+
+| Keyword | Required | Description |
+|---------|----------|-------------|
+| `proposal_context` | Yes | Title + question / experiment context |
+| `data_strategy` | Yes | Method / data strategy |
+| `model_strategy` | Yes | Model strategy / key result |
+| `environment` | Yes | Conclusion + artifacts (multi-line ok) |
+| `embedding` | No | Optional client-generated vector |
+| `embedding_model_id` | No | Model bucket id when using client embedding |
+
+### EvoScientist → Hub mapping
+
+- **Ideation:** `goal`, `type`, `title`, `core_idea`, `requirements` map directly.
+- **Experiment:** EvoScientist `title`+`question` → `proposal_context`; `method` → `data_strategy`; `key_result` → `model_strategy`; `conclusion`+`artifacts` → `environment`.
+
 ## How It Works
 
 1. **Browse Mode**: Read-only access to the community memory pool
-2. **Share Mode**: Register/login to get a token, then you can upload your ideas and experiments
+2. **Share Mode**: Register/login to get a token, then you can upload your ideas and experiments to the server (e.g. evomem.club)
 3. **Same-Model Bucket**: Vector search only matches memories using the same embedding model for accuracy
 
 ## Commands
@@ -76,7 +110,7 @@ python scripts/push.py ideation --goal "..." --title "..." --core-idea "..."
 ## Integration with EvoScientist
 
 When this skill is installed and configured, EvoScientist can:
-- Automatically push new ideation items and experiment conclusions to the Hub
+- Automatically push new ideation items and experiment conclusions to the Hub (e.g. evomem.club)
 - Search community memories when exploring research directions
 
-To enable auto-push, ensure `EVOMEMORY_API_BASE_URL` and `EVOMEMORY_API_TOKEN` are set.
+To enable auto-push, set `EVOMEMORY_API_BASE_URL` (e.g. `https://evomem.club`) and `EVOMEMORY_API_TOKEN`.

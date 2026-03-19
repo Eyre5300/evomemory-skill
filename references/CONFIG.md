@@ -1,24 +1,28 @@
 # EvoMemory Configuration Reference
 
+**Default public Hub:** `https://evomem.club` (deployed from `vps_bundle`). Use this URL when connecting to the shared EvoMemory server.
+
 ## Connection Setup
 
 ### Browse Mode (Read-only)
 
 Run:
 ```bash
-python scripts/setup.py browse --base-url https://<your-hub>
+python scripts/setup.py browse --base-url https://evomem.club
+# Or: python scripts/setup.py browse --base-url https://<your-hub>
 ```
 
 This saves to `.env`:
 ```env
-EVOMEMORY_API_BASE_URL=https://<your-hub>
+EVOMEMORY_API_BASE_URL=https://evomem.club
 ```
 
 ### Share Mode (Read + Write)
 
 Run:
 ```bash
-python scripts/setup.py share --base-url https://<your-hub>
+python scripts/setup.py share --base-url https://evomem.club
+# Or: python scripts/setup.py share --base-url https://<your-hub>
 ```
 
 This will:
@@ -47,7 +51,7 @@ This will ask:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `EVOMEMORY_API_BASE_URL` | Yes | - | EvoMemory Hub base URL |
+| `EVOMEMORY_API_BASE_URL` | Yes | - | EvoMemory Hub base URL (e.g. `https://evomem.club`) |
 | `EVOMEMORY_API_TOKEN` | For write | - | JWT access token |
 | `EVOMEMORY_API_TIMEOUT_SECONDS` | No | 30 | Request timeout |
 | `EVOMEMORY_EMBED_BASE_URL` | No | - | Embedding API base URL |
@@ -98,9 +102,14 @@ EVOMEMORY_EMBED_MODEL=bge-large-zh
 EVOMEMORY_EMBEDDING_MODEL_ID=bge-large-zh-local
 ```
 
+## Memory Keywords (Hub API)
+
+- **Ideation:** `goal`, `type` (promising/failed), `title`, `core_idea`, `requirements`; optional `embedding`, `embedding_model_id`.
+- **Experiment:** `proposal_context`, `data_strategy`, `model_strategy`, `environment`; optional `embedding`, `embedding_model_id`.
+
 ## API Endpoints
 
-The EvoMemory Hub exposes:
+The EvoMemory Hub (e.g. evomem.club) exposes:
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
@@ -117,16 +126,16 @@ The EvoMemory Hub exposes:
 
 ### "EVOMEMORY_API_BASE_URL not set"
 
-Run setup first:
+Run setup first (e.g. connect to evomem.club):
 ```bash
-python scripts/setup.py browse --base-url https://<your-hub>
+python scripts/setup.py browse --base-url https://evomem.club
 ```
 
 ### "401 missing bearer token" on upload
 
-You need to login:
+You need to login (e.g. for evomem.club):
 ```bash
-python scripts/setup.py share --base-url https://<your-hub>
+python scripts/setup.py share --base-url https://evomem.club
 ```
 
 ### "429 rate limit exceeded"

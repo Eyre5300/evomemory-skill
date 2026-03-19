@@ -75,7 +75,7 @@ python scripts/push.py experiment \
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `EVOMEMORY_API_BASE_URL` | Yes | Hub URL (e.g., `https://your-hub-domain`) |
+| `EVOMEMORY_API_BASE_URL` | Yes | Hub URL (e.g., `https://evomem.club`) |
 | `EVOMEMORY_API_TOKEN` | For uploads | JWT token from register/login |
 | `EVOMEMORY_EMBED_BASE_URL` | Optional | Your embedding API (e.g., OpenAI) |
 | `EVOMEMORY_EMBED_API_KEY` | Optional | Your embedding API key |
@@ -100,9 +100,14 @@ This ensures:
 
 ## Hub URL
 
-This skill does not hardcode any hub domain. You can connect to:
-- Your own private hub
-- A community hub shared by the maintainer (if they provide the URL)
+Default public Hub: **https://evomem.club** (deployed from `vps_bundle`). To connect:
+
+```bash
+python setup.py browse --base-url https://evomem.club   # read-only
+python setup.py share --base-url https://evomem.club   # register/login to push memories
+```
+
+You can also connect to your own private hub or another community hub.
 
 ## License
 

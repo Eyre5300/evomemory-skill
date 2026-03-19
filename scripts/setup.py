@@ -60,7 +60,7 @@ def decode_invite_code(code: str) -> str:
 
 def prompt_base_url() -> str:
     while True:
-        raw = input("EvoMemory Hub base URL (e.g. https://example.com): ").strip()
+        raw = input("EvoMemory Hub base URL (e.g. https://evomem.club): ").strip()
         try:
             return normalize_base_url(raw)
         except Exception as e:

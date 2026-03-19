@@ -89,29 +89,32 @@ def search(kind: str, query: str, top_k: int = 5) -> List[dict[str, Any]]:
                 detail = r.text
             print(f"Error: {r.status_code} {detail}")
             sys.exit(1)
-        return r.json()
+        data = r.json()
+        return data.get("results", [])
 
 
 def format_ideation(item: dict[str, Any], idx: int) -> str:
     lines = [
         f"[{idx}] {item.get('title', '(untitled)')}",
-        f"    Type: {item.get('memory_type', '?')}",
+        f"    Type: {item.get('type', item.get('memory_type', '?'))}",
         f"    Goal: {item.get('goal', '?')}",
-        f"    Core Idea: {item.get('core_idea', '?')[:100]}...",
+        f"    Core Idea: {(item.get('core_idea') or '?')[:100]}...",
     ]
-    if item.get("similarity"):
-        lines.append(f"    Similarity: {item['similarity']:.3f}")
+    sim = item.get("similarity_score") or item.get("similarity")
+    if sim is not None:
+        lines.append(f"    Similarity: {float(sim):.3f}")
     return "\n".join(lines)
 
 
 def format_experiment(item: dict[str, Any], idx: int) -> str:
     lines = [
-        f"[{idx}] {item.get('proposal_context', '(untitled)')[:60]}...",
-        f"    Data Strategy: {item.get('data_strategy', '?')[:60]}...",
-        f"    Model Strategy: {item.get('model_strategy', '?')[:60]}...",
+        f"[{idx}] {(item.get('proposal_context') or '(untitled)')[:60]}...",
+        f"    Data Strategy: {(item.get('data_strategy') or '?')[:60]}...",
+        f"    Model Strategy: {(item.get('model_strategy') or '?')[:60]}...",
     ]
-    if item.get("similarity"):
-        lines.append(f"    Similarity: {item['similarity']:.3f}")
+    sim = item.get("similarity_score") or item.get("similarity")
+    if sim is not None:
+        lines.append(f"    Similarity: {float(sim):.3f}")
     return "\n".join(lines)
 
 
