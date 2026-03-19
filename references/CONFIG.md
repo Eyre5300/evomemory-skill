@@ -41,6 +41,7 @@ python scripts/setup.py wizard
 This will ask:
 - Browse (read-only) or Share (upload)
 - Hub URL (you paste it yourself; no default is shown)
+- Or Public Hub (invite code): you paste a code given by the maintainer (no domain is shown)
 
 ## Environment Variables
 

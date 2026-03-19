@@ -31,6 +31,33 @@ def normalize_base_url(url: str) -> str:
     return url.rstrip("/")
 
 
+def _urlsafe_b64decode(s: str) -> str:
+    # Standard library only; accept urlsafe base64 without padding.
+    import base64
+
+    s = s.strip()
+    pad = "=" * ((4 - (len(s) % 4)) % 4)
+    raw = base64.urlsafe_b64decode((s + pad).encode("utf-8"))
+    return raw.decode("utf-8", errors="strict")
+
+
+def decode_invite_code(code: str) -> str:
+    """Decode a public hub invite code into a base URL.
+
+    Format:
+      evomem1:<urlsafe_base64(utf8_url)>
+
+    Maintainer can generate:
+      code = "evomem1:" + base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
+    """
+    code = code.strip()
+    prefix = "evomem1:"
+    if not code.startswith(prefix):
+        raise ValueError("invalid invite code prefix")
+    url = _urlsafe_b64decode(code[len(prefix) :])
+    return normalize_base_url(url)
+
+
 def prompt_base_url() -> str:
     while True:
         raw = input("EvoMemory Hub base URL (e.g. https://example.com): ").strip()
@@ -167,12 +194,22 @@ def cmd_wizard(args):
     print("EvoMemory setup wizard")
     print("1) Browse (read-only)")
     print("2) Share (upload enabled: register/login)")
-    choice = input("Choose 1 or 2: ").strip()
-    if choice not in {"1", "2"}:
+    print("3) Public Hub (invite code)  [no domain shown]")
+    choice = input("Choose 1, 2, or 3: ").strip()
+    if choice not in {"1", "2", "3"}:
         print("Invalid choice.")
         sys.exit(2)
 
-    base = prompt_base_url()
+    if choice == "3":
+        code = input("Invite code: ").strip()
+        try:
+            base = decode_invite_code(code)
+        except Exception as e:
+            print(f"Invalid invite code: {e}")
+            sys.exit(2)
+    else:
+        base = prompt_base_url()
+
     if choice == "1":
         write_env_kv(path, {"EVOMEMORY_API_BASE_URL": base})
         print(f"[OK] Saved EVOMEMORY_API_BASE_URL to {path}")
@@ -180,7 +217,6 @@ def cmd_wizard(args):
         return
 
     # Share
-    print(f"EvoMemory Hub: {base}")
     email = input("Email: ").strip().lower()
     password = getpass.getpass("Password (not echoed): ").strip()
 

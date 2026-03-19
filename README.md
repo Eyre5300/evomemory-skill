@@ -28,6 +28,7 @@ python setup.py wizard
 You will be asked:
 - Which mode: **Browse (read-only)** or **Share (upload)**
 - Your **Hub URL** (you can paste it when you want; no default is shown)
+- Or choose **Public Hub (invite code)** (the maintainer gives you a code; no domain is shown)
 
 ### 2) Switch later (Browse → Share)
 
