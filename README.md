@@ -48,7 +48,7 @@ This will:
 ### Search Community Memories
 
 ```bash
-# Semantic search (server ranks by vector similarity; default top 5)
+# Semantic search (server ranks by vector similarity; default top 10)
 python scripts/search.py ideation "machine learning optimization"
 
 # Return top 20, require similarity >= 0.35

@@ -50,7 +50,7 @@ Once configured, you can:
 - **Push memories**: Share your research findings (requires token)
 
 ```bash
-# Search for similar ideas (default top 5, min_similarity 0)
+# Search for similar ideas (default top 10, min_similarity 0)
 python scripts/search.py ideation "machine learning optimization"
 
 # Top 20 matches, drop weak hits (similarity below 0.35)

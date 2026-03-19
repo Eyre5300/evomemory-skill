@@ -71,12 +71,12 @@ def embed_text(text: str) -> List[float]:
 
 
 def default_top_k() -> int:
-    raw = env("EVOMEMORY_SEARCH_TOP_K", "5")
+    raw = env("EVOMEMORY_SEARCH_TOP_K", "10")
     try:
         k = int(raw)
         return max(1, min(100, k))
     except ValueError:
-        return 5
+        return 10
 
 
 def default_min_similarity() -> float:
@@ -154,7 +154,7 @@ def main():
         type=int,
         default=None,
         metavar="N",
-        help="Return top N most similar (1–100). Default: env EVOMEMORY_SEARCH_TOP_K or 5",
+        help="Return top N most similar (1–100). Default: env EVOMEMORY_SEARCH_TOP_K or 10",
     )
     parser.add_argument(
         "--min-similarity",
