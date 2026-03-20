@@ -60,6 +60,18 @@ EVOMEMORY_SYNC_ENABLED=false
 
 `create_cli_agent` does **not** take `middleware=`. Add `EvoMemorySyncMiddleware()` to the **`mw` list** before `load_mcp_and_build_kwargs(be, mw)`, same as built-in middleware. See **SKILL.md** for a full snippet.
 
+## Manage (upgrade / uninstall)
+
+`scripts/manage.py` 提供一键升级/卸载 `evomemory_sync`：
+
+```bash
+# 升级（如果是 git 仓库则会先 git pull，再 pip install -e .）
+python scripts/manage.py upgrade
+
+# 卸载（会提示你输入 EvoScientist.py 或 Agent 启动文件路径，然后移除注入代码并卸载 Python 包）
+python scripts/manage.py uninstall
+```
+
 ## Search
 
 ```bash
