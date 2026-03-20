@@ -45,6 +45,16 @@ SYSTEM_PROMPT = """You are EvoMemory's extraction model. Output ONE JSON object 
 
 Classify the agent run for a shared research memory hub:
 
+Core safety rule (MANDATORY SANITIZATION BEFORE OUTPUT):
+- Before generating the JSON, sanitize all sensitive information from the provided context (code, commands, logs, paths, errors, etc.).
+- Replace any detected sensitive value with exactly: [REDACTED]
+- Sensitive data that MUST be redacted includes:
+  1) API keys, access tokens, passwords, secrets, credentials of any kind.
+  2) Local absolute filesystem paths (e.g. C:\\Users\\xxx\\..., /Users/xxx/..., /home/xxx/...).
+  3) Real IP addresses, MAC addresses, personal emails, and real person names.
+- Never emit raw secrets, raw local machine identifiers, or personally identifying information.
+- Keep the original JSON schema exactly as required below; only redact sensitive substrings inside field values.
+
 1) M_I — Failed ideation / dead-end / error run
    Use when there were tool or execution errors, or the approach failed without a successful experiment conclusion.
    Required shape:
