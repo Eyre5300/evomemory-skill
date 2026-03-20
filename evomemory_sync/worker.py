@@ -8,12 +8,9 @@ import os
 import sys
 from pathlib import Path
 
-try:
-    from dotenv import load_dotenv
+import hashlib
 
-    load_dotenv()
-except Exception:
-    pass
+from .env_loader import load_env
 
 from .extractor import _call_llm_to_extract_json
 from .uploader import upload_memory_record
@@ -44,7 +41,10 @@ def main() -> int:
 
     temp_file_path = Path(sys.argv[1]).expanduser().resolve()
     try:
+        load_env()
         raw = temp_file_path.read_text(encoding="utf-8")
+        ctx_hash = hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()[:12]
+        logger.info("offline worker start tmp=%s ctx_hash=%s", temp_file_path.name, ctx_hash)
         ctx = json.loads(raw)
         if not isinstance(ctx, dict):
             return 1
@@ -53,9 +53,13 @@ def main() -> int:
         if not record or not isinstance(record, dict):
             return 0
         if record.get("skip") is True:
+            logger.info("offline worker skip ctx_hash=%s", ctx_hash)
             return 0
 
+        mem_type = str(record.get("memory_type") or record.get("memory_kind") or record.get("type") or "")
+        logger.info("offline worker upload ctx_hash=%s memory_type=%s", ctx_hash, mem_type)
         upload_memory_record(record)
+        logger.info("offline worker done ctx_hash=%s", ctx_hash)
         return 0
     except Exception:
         logger.exception("offline worker failed")

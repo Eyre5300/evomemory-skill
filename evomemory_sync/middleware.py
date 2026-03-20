@@ -34,18 +34,10 @@ def _maybe_load_dotenv() -> None:
         return
     _DOTENV_LOADED = True
     try:
-        from dotenv import load_dotenv
+        from .env_loader import load_env
 
-        repo_root = Path(__file__).resolve().parent.parent
-        root_env = repo_root / ".env"
-        scripts_env = repo_root / "scripts" / ".env"
-        if root_env.exists():
-            load_dotenv(dotenv_path=str(root_env), override=False)
-        if scripts_env.exists():
-            load_dotenv(dotenv_path=str(scripts_env), override=False)
-        if not root_env.exists() and not scripts_env.exists():
-            load_dotenv()
-    except ImportError:
+        load_env()
+    except Exception:
         pass
 
 

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Tuple
 import requests
 from langchain_core.tools import tool
 
+from .env_loader import load_env
 from .uploader import (
     BROWSER_UA,
     DEFAULT_ACCEPT,
@@ -23,19 +24,7 @@ def _env(name: str, default: str = "") -> str:
 
 
 try:
-    # If you're running from the repo checkout, setup.py persists credentials to `scripts/.env`.
-    # Load it so `search_evomemory` can see EVOMEMORY_API_TOKEN / EVOMEMORY_API_BASE_URL.
-    from dotenv import load_dotenv
-
-    repo_root = Path(__file__).resolve().parent.parent
-    root_env = repo_root / ".env"
-    scripts_env = repo_root / "scripts" / ".env"
-    if root_env.exists():
-        load_dotenv(dotenv_path=str(root_env), override=False)
-    if scripts_env.exists():
-        load_dotenv(dotenv_path=str(scripts_env), override=False)
-    if not root_env.exists() and not scripts_env.exists():
-        load_dotenv(override=False)
+    load_env()
 except Exception:
     pass
 
