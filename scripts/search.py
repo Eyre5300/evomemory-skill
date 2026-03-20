@@ -159,29 +159,86 @@ def search(kind: str, query: str, top_k: int, min_similarity: float, insecure: b
         return data.get("results", [])
 
 
-def format_ideation(item: dict[str, Any], idx: int) -> str:
+def _preview(text: Any, max_len: int, full_text: bool) -> str:
+    raw = str(text or "").strip().replace("\r", " ").replace("\n", " ")
+    if full_text or len(raw) <= max_len:
+        return raw
+    return raw[:max_len].rstrip() + "..."
+
+
+def _similarity_text(item: dict[str, Any]) -> str:
+    sim = item.get("similarity_score")
+    if sim is None:
+        sim = item.get("similarity")
+    if sim is None:
+        return "?"
+    try:
+        return f"{float(sim):.3f}"
+    except Exception:
+        return str(sim)
+
+
+def format_ideation(item: dict[str, Any], idx: int, full_text: bool = False) -> str:
+    title = _preview(item.get("title") or "(untitled)", 180, full_text)
+    ideation_type = item.get("type") or item.get("memory_type") or "?"
+    goal = _preview(item.get("goal") or "?", 220, full_text)
+    core = _preview(item.get("core_idea") or "?", 420, full_text)
     lines = [
-        f"[{idx}] {item.get('title', '(untitled)')}",
-        f"    Type: {item.get('type', item.get('memory_type', '?'))}",
-        f"    Goal: {item.get('goal', '?')}",
-        f"    Core Idea: {(item.get('core_idea') or '?')[:100]}...",
+        f"[{idx}] {title}",
+        f"    Type: {ideation_type}",
+        f"    Goal: {goal}",
+        f"    Core Idea: {core}",
+        f"    Similarity: {_similarity_text(item)}",
     ]
-    sim = item.get("similarity_score") or item.get("similarity")
-    if sim is not None:
-        lines.append(f"    Similarity: {float(sim):.3f}")
     return "\n".join(lines)
 
 
-def format_experiment(item: dict[str, Any], idx: int) -> str:
+def format_experiment(item: dict[str, Any], idx: int, full_text: bool = False) -> str:
+    proposal = _preview(item.get("proposal_context") or "(untitled)", 220, full_text)
+    data_s = _preview(item.get("data_strategy") or "?", 260, full_text)
+    model_s = _preview(item.get("model_strategy") or "?", 260, full_text)
+    env_s = _preview(item.get("environment") or "?", 260, full_text)
+    status = _preview(item.get("status") or "?", 40, full_text)
     lines = [
-        f"[{idx}] {(item.get('proposal_context') or '(untitled)')[:60]}...",
-        f"    Data Strategy: {(item.get('data_strategy') or '?')[:60]}...",
-        f"    Model Strategy: {(item.get('model_strategy') or '?')[:60]}...",
+        f"[{idx}] {proposal}",
+        f"    Status: {status}",
+        f"    Data Strategy: {data_s}",
+        f"    Model Strategy: {model_s}",
+        f"    Environment: {env_s}",
+        f"    Similarity: {_similarity_text(item)}",
     ]
-    sim = item.get("similarity_score") or item.get("similarity")
-    if sim is not None:
-        lines.append(f"    Similarity: {float(sim):.3f}")
     return "\n".join(lines)
+
+
+def _match_contains(item: dict[str, Any], keyword: str) -> bool:
+    if not keyword:
+        return True
+    kw = keyword.lower()
+    blob = json.dumps(item, ensure_ascii=False).lower()
+    return kw in blob
+
+
+def filter_results(
+    kind: str,
+    results: List[dict[str, Any]],
+    ideation_type: str | None = None,
+    experiment_status: str | None = None,
+    contains: str | None = None,
+) -> List[dict[str, Any]]:
+    out: List[dict[str, Any]] = []
+    for item in results:
+        if contains and not _match_contains(item, contains):
+            continue
+        if kind == "ideation" and ideation_type:
+            t = str(item.get("type") or item.get("memory_type") or "").strip().lower()
+            if t != ideation_type:
+                continue
+        if kind == "experiment" and experiment_status:
+            st = str(item.get("status") or "").strip().lower()
+            if st != experiment_status:
+                continue
+        out.append(item)
+    return out
 
 
 def main():
@@ -209,6 +266,24 @@ def main():
         action="store_true",
         help="Disable TLS certificate verification (use for HTTPS+IP troubleshooting)",
     )
+    parser.add_argument(
+        "--ideation-type",
+        choices=["promising", "failed"],
+        help="Only for kind=ideation: filter by ideation type",
+    )
+    parser.add_argument(
+        "--experiment-status",
+        help="Only for kind=experiment: filter by status (e.g. completed, failed)",
+    )
+    parser.add_argument(
+        "--contains",
+        help="Filter results by keyword (matches any field in JSON)",
+    )
+    parser.add_argument(
+        "--show-full-text",
+        action="store_true",
+        help="Do not truncate long text fields in output",
+    )
     parser.add_argument("--json", action="store_true", help="Output raw JSON")
     
     args = parser.parse_args()
@@ -222,22 +297,32 @@ def main():
     print()
     
     results = search(args.kind, args.query, top_k, min_sim, insecure=args.insecure)
+    filtered = filter_results(
+        args.kind,
+        results,
+        ideation_type=args.ideation_type,
+        experiment_status=(args.experiment_status or "").strip().lower() or None,
+        contains=(args.contains or "").strip() or None,
+    )
     
     if args.json:
-        print(json.dumps(results, indent=2, ensure_ascii=False))
+        print(json.dumps(filtered, indent=2, ensure_ascii=False))
         return
     
-    if not results:
+    if not filtered:
         print("No results found.")
         return
     
-    print(f"Found {len(results)} results:\n")
+    if len(filtered) != len(results):
+        print(f"Found {len(filtered)} results (filtered from {len(results)}):\n")
+    else:
+        print(f"Found {len(filtered)} results:\n")
     
-    for i, item in enumerate(results, 1):
+    for i, item in enumerate(filtered, 1):
         if args.kind == "ideation":
-            print(format_ideation(item, i))
+            print(format_ideation(item, i, full_text=args.show_full_text))
         else:
-            print(format_experiment(item, i))
+            print(format_experiment(item, i, full_text=args.show_full_text))
         print()
 
 
