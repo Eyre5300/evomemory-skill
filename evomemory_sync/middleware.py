@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from typing import Any
@@ -80,6 +81,11 @@ def _collect_tool_code_and_errors(messages: list[BaseMessage]) -> tuple[str, str
                 else:
                     name = str(getattr(tc, "name", "") or "")
                     args = getattr(tc, "args", None) or {}
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except Exception:
+                        args = {}
                 if not isinstance(args, dict):
                     args = {}
                 if name == "execute" and args.get("command"):
