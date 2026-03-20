@@ -118,7 +118,11 @@ def cmd_uninstall(_: argparse.Namespace) -> None:
     print("请输入本地 `EvoScientist.py`（或 Agent 启动文件）的绝对或相对路径：")
     raw_path = input("> ").strip()
     if not raw_path:
-        print(_color_red("错误：未提供文件路径。将仅卸载 Python 包，注入代码请手动删除。"))
+        print(
+            _color_red(
+                "错误：未提供文件路径。将仅卸载 Python 包；注入代码请手动删除，以避免运行时触发 ModuleNotFoundError。"
+            )
+        )
         file_path = None
     else:
         p = Path(os.path.expanduser(raw_path))
@@ -136,6 +140,7 @@ def cmd_uninstall(_: argparse.Namespace) -> None:
             print(_color_red(f"警告：找不到文件：{file_path}。请手动在源码中删除对应注入代码："))
             print(_color_red(" - `from evomemory_sync.middleware import EvoMemorySyncMiddleware`"))
             print(_color_red(" - `EvoMemorySyncMiddleware(),`（在 `mw` 列表中）"))
+            print(_color_red("为避免运行时触发 ModuleNotFoundError，请手动删除后再运行 EvoScientist。"))
         else:
             if not (found_import and found_mw_item):
                 missing = []
