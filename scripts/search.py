@@ -7,7 +7,7 @@ Usage:
     python search.py ideation "..." --top-k 20 --min-similarity 0.35
 
 Env defaults (optional):
-    EVOMEMORY_API_BASE_URL (default: http://evomem.club)
+    EVOMEMORY_API_BASE_URL (default: https://evomem.club)
     EVOMEMORY_SEARCH_TOP_K, EVOMEMORY_SEARCH_MIN_SIMILARITY
 """
 
@@ -26,6 +26,27 @@ except ImportError:
     print("Error: httpx not installed. Run: pip install httpx")
     sys.exit(1)
 
+
+def _load_local_env_file() -> None:
+    env_file = Path(__file__).resolve().parent / ".env"
+    if not env_file.exists():
+        return
+    try:
+        for line in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+            raw = line.strip()
+            if not raw or raw.startswith("#") or "=" not in raw:
+                continue
+            k, v = raw.split("=", 1)
+            key = k.strip()
+            val = v.strip().strip('"').strip("'")
+            if key and os.getenv(key) is None:
+                os.environ[key] = val
+    except Exception:
+        pass
+
+
+_load_local_env_file()
+
 try:
     # Allow `python scripts/setup.py browse|share` to persist config in scripts/.env.
     from dotenv import load_dotenv
@@ -42,15 +63,12 @@ def env(name: str, default: str = "") -> str:
 
 
 def get_base_url() -> str:
-    base = env("EVOMEMORY_API_BASE_URL", "http://evomem.club")
+    base = env("EVOMEMORY_API_BASE_URL", "https://evomem.club")
     base = base.strip()
     if not base:
-        base = "http://evomem.club"
-    # Your current hub endpoint appears to be reachable via HTTP but not HTTPS.
-    if base.startswith("https://"):
-        base = "http://" + base[len("https://") :]
+        base = "https://evomem.club"
     if not base.startswith("http"):
-        base = "http://" + base
+        base = "https://" + base
     return base.rstrip("/")
 
 
@@ -103,7 +121,7 @@ def default_min_similarity() -> float:
         return 0.0
 
 
-def search(kind: str, query: str, top_k: int, min_similarity: float) -> List[dict[str, Any]]:
+def search(kind: str, query: str, top_k: int, min_similarity: float, insecure: bool = False) -> List[dict[str, Any]]:
     base = get_base_url()
     url = f"{base}/memory/{kind}/search"
     
@@ -120,12 +138,15 @@ def search(kind: str, query: str, top_k: int, min_similarity: float) -> List[dic
         payload["query_text"] = query
 
     timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
-    with httpx.Client(timeout=timeout) as client:
+    with httpx.Client(timeout=timeout, verify=not insecure) as client:
         try:
             r = client.post(url, json=payload, headers=get_headers())
         except Exception as e:
             print(f"Error: request failed: {type(e).__name__}: {e}")
-            print("Tip: ensure network access to the hub is allowed, and EVOMEMORY_API_BASE_URL is reachable.")
+            if insecure:
+                print("Tip: current request used --insecure; verify EVOMEMORY_API_BASE_URL is reachable.")
+            else:
+                print("Tip: if using HTTPS + raw IP, retry with --insecure.")
             sys.exit(1)
         if r.status_code >= 400:
             try:
@@ -183,6 +204,11 @@ def main():
         metavar="S",
         help="Minimum similarity score 0.0–1.0 (filters weak matches). Default: env EVOMEMORY_SEARCH_MIN_SIMILARITY or 0",
     )
+    parser.add_argument(
+        "--insecure",
+        action="store_true",
+        help="Disable TLS certificate verification (use for HTTPS+IP troubleshooting)",
+    )
     parser.add_argument("--json", action="store_true", help="Output raw JSON")
     
     args = parser.parse_args()
@@ -195,7 +221,7 @@ def main():
     print(f"(top_k={top_k}, min_similarity={min_sim})")
     print()
     
-    results = search(args.kind, args.query, top_k, min_sim)
+    results = search(args.kind, args.query, top_k, min_sim, insecure=args.insecure)
     
     if args.json:
         print(json.dumps(results, indent=2, ensure_ascii=False))
