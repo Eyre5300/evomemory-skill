@@ -7,6 +7,7 @@ Usage:
     python search.py ideation "..." --top-k 20 --min-similarity 0.35
 
 Env defaults (optional):
+    EVOMEMORY_API_BASE_URL (default: https://evomem.club)
     EVOMEMORY_SEARCH_TOP_K, EVOMEMORY_SEARCH_MIN_SIMILARITY
 """
 
@@ -31,11 +32,12 @@ def env(name: str, default: str = "") -> str:
 
 
 def get_base_url() -> str:
-    base = env("EVOMEMORY_API_BASE_URL")
+    base = env("EVOMEMORY_API_BASE_URL", "https://evomem.club")
+    base = base.strip()
     if not base:
-        print("Error: EVOMEMORY_API_BASE_URL not set.")
-        print("Run: python setup.py browse --base-url <url>")
-        sys.exit(1)
+        base = "https://evomem.club"
+    if not base.startswith("http"):
+        base = "https://" + base
     return base.rstrip("/")
 
 
