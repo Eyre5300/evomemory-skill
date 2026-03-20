@@ -38,6 +38,8 @@ python setup.py wizard
 
 Writes `.env` with `EVOMEMORY_API_BASE_URL` and optionally `EVOMEMORY_API_TOKEN`.
 
+如果你只想使用默认公有服务端，可直接采用域名 `evomem.club`，即 `EVOMEMORY_API_BASE_URL=https://evomem.club`（自建 Hub 请改写该变量）。
+
 ### 2. Configure the extractor (middleware)
 
 The middleware calls an **OpenAI-compatible** chat API (default base URL targets SiliconFlow).
