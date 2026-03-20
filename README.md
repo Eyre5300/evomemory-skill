@@ -33,6 +33,8 @@ Use the **same Python environment** as EvoScientist so `import evomemory_sync` w
 ```bash
 cd scripts
 python setup.py wizard
+# If your hub is HTTPS over raw IP and cert hostname mismatches:
+# python setup.py share --base-url https://<your-ip> --insecure
 ```
 
 Browse-only or share (register/login). Credentials go to `.env`.

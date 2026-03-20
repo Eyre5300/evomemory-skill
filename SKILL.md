@@ -34,6 +34,8 @@ cd scripts
 python setup.py wizard
 # Or: python setup.py browse --base-url http://evomem.club
 #      python setup.py share --base-url http://evomem.club
+# If using HTTPS with raw IP (cert hostname mismatch), add:
+#      python setup.py share --base-url https://<your-ip> --insecure
 ```
 
 Writes `.env` with `EVOMEMORY_API_BASE_URL` and optionally `EVOMEMORY_API_TOKEN`.

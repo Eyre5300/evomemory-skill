@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import getpass
 import sys
+from ipaddress import ip_address
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -105,8 +107,22 @@ def write_env_kv(path: Path, updates: Dict[str, str]) -> None:
     path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
 
 
-def post_json(url: str, payload: dict[str, Any], timeout: float = 15.0) -> dict[str, Any]:
-    with httpx.Client(timeout=timeout) as client:
+def _is_ip_https(base_url: str) -> bool:
+    try:
+        parsed = urlparse(base_url)
+        if parsed.scheme.lower() != "https":
+            return False
+        host = (parsed.hostname or "").strip()
+        if not host:
+            return False
+        ip_address(host)
+        return True
+    except Exception:
+        return False
+
+
+def post_json(url: str, payload: dict[str, Any], timeout: float = 15.0, *, verify: bool = True) -> dict[str, Any]:
+    with httpx.Client(timeout=timeout, verify=verify) as client:
         r = client.post(url, json=payload)
         if r.status_code >= 400:
             try:
@@ -135,6 +151,11 @@ def cmd_share(args):
     """Share mode: register/login to get access token."""
     base = normalize_base_url(args.base_url) if args.base_url else prompt_base_url()
     path = env_path(args.env_file)
+    verify_tls = not args.insecure
+
+    if _is_ip_https(base):
+        print("Notice: HTTPS + IP address may fail certificate hostname validation.")
+        print("If you hit CERTIFICATE_VERIFY_FAILED, retry with: --insecure")
 
     print(f"EvoMemory Hub: {base}")
     email = input("Email: ").strip().lower()
@@ -148,11 +169,11 @@ def cmd_share(args):
     last_err: Optional[Exception] = None
 
     def try_register() -> Optional[str]:
-        data = post_json(base + "/auth/register", {"email": email, "password": password})
+        data = post_json(base + "/auth/register", {"email": email, "password": password}, verify=verify_tls)
         return str(data.get("access_token") or "")
 
     def try_login() -> Optional[str]:
-        data = post_json(base + "/auth/login", {"email": email, "password": password})
+        data = post_json(base + "/auth/login", {"email": email, "password": password}, verify=verify_tls)
         return str(data.get("access_token") or "")
 
     if args.mode == "register":
@@ -209,6 +230,7 @@ def cmd_wizard(args):
             sys.exit(2)
     else:
         base = prompt_base_url()
+    verify_tls = not args.insecure
 
     if choice == "1":
         write_env_kv(path, {"EVOMEMORY_API_BASE_URL": base})
@@ -228,11 +250,11 @@ def cmd_wizard(args):
     last_err: Optional[Exception] = None
 
     def try_register() -> Optional[str]:
-        data = post_json(base + "/auth/register", {"email": email, "password": password})
+        data = post_json(base + "/auth/register", {"email": email, "password": password}, verify=verify_tls)
         return str(data.get("access_token") or "")
 
     def try_login() -> Optional[str]:
-        data = post_json(base + "/auth/login", {"email": email, "password": password})
+        data = post_json(base + "/auth/login", {"email": email, "password": password}, verify=verify_tls)
         return str(data.get("access_token") or "")
 
     for m in ["register", "login"]:
@@ -280,11 +302,13 @@ def main():
     p_share.add_argument("--env-file", help="Path to .env file (default: ./.env)")
     p_share.add_argument("--mode", choices=["auto", "register", "login"], default="auto",
                          help="auto=try register then login")
+    p_share.add_argument("--insecure", action="store_true", help="Disable TLS certificate verification (use for HTTPS+IP troubleshooting)")
     p_share.set_defaults(func=cmd_share)
 
     # wizard command
     p_wizard = subparsers.add_parser("wizard", help="Interactive setup wizard (recommended)")
     p_wizard.add_argument("--env-file", help="Path to .env file (default: ./.env)")
+    p_wizard.add_argument("--insecure", action="store_true", help="Disable TLS certificate verification during share step")
     p_wizard.set_defaults(func=cmd_wizard)
 
     args = parser.parse_args()
