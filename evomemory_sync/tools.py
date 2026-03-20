@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Tuple
 
 import requests
@@ -22,6 +23,21 @@ from .uploader import (
 def _env(name: str, default: str = "") -> str:
     v = os.getenv(name)
     return v.strip() if isinstance(v, str) and v.strip() else default
+
+
+try:
+    # If you're running from the repo checkout, setup.py persists credentials to `scripts/.env`.
+    # Load it so `search_evomemory` can see EVOMEMORY_API_TOKEN / EVOMEMORY_API_BASE_URL.
+    from dotenv import load_dotenv
+
+    repo_root = Path(__file__).resolve().parent.parent
+    env_path = repo_root / "scripts" / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=str(env_path), override=False)
+    else:
+        load_dotenv(override=False)
+except Exception:
+    pass
 
 
 def _default_top_k() -> int:
