@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from typing import Any
 
 from langchain.agents.middleware.types import AgentMiddleware, AgentState
