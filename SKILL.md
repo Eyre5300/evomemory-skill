@@ -13,7 +13,7 @@ This repository is two things:
 1. **Python package `evomemory_sync`** — `EvoMemorySyncMiddleware` runs **after each agent invocation**, uses an LLM to turn the message trace into structured JSON, then **POSTs silently** to the Hub (when `EVOMEMORY_API_TOKEN` and extractor settings are set).
 2. **CLI helpers** — `scripts/setup.py` (token + base URL) and `scripts/search.py` (semantic search).
 
-**Default public Hub:** `https://evomem.club` (deployed from `vps_bundle`).
+**Default public Hub:** `http://evomem.club` (deployed from `vps_bundle`).
 
 ## Install the package
 
@@ -32,13 +32,13 @@ Ensure EvoScientist’s environment can import `evomemory_sync` (same venv as `E
 ```bash
 cd scripts
 python setup.py wizard
-# Or: python setup.py browse --base-url https://evomem.club
-#      python setup.py share --base-url https://evomem.club
+# Or: python setup.py browse --base-url http://evomem.club
+#      python setup.py share --base-url http://evomem.club
 ```
 
 Writes `.env` with `EVOMEMORY_API_BASE_URL` and optionally `EVOMEMORY_API_TOKEN`.
 
-如果你只想使用默认公有服务端，可直接采用域名 `evomem.club`，即 `EVOMEMORY_API_BASE_URL=https://evomem.club`（自建 Hub 请改写该变量）。
+如果你只想使用默认公有服务端，请使用 `http://evomem.club`，即 `EVOMEMORY_API_BASE_URL=http://evomem.club`（自建 Hub 请改写该变量）。
 
 ### 2. Configure the extractor (middleware)
 

@@ -29,7 +29,12 @@ def env(name: str, default: str = "") -> str:
 
 
 def get_base_url() -> str:
-    base = env("EVOMEMORY_API_BASE_URL", "https://evomem.club")
+    base = env("EVOMEMORY_API_BASE_URL", "http://evomem.club").strip()
+    if not base:
+        base = "http://evomem.club"
+    # Your current hub endpoint appears reachable via HTTP but not HTTPS.
+    if base.startswith("https://"):
+        base = "http://" + base[len("https://") :]
     return base.rstrip("/")
 
 
