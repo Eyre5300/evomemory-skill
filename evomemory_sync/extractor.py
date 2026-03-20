@@ -89,7 +89,7 @@ Optional promising ideation (only if no errors and the user produced a shareable
 """
 
 
-def call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:
+def _call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:
     """Call configured chat model; return parsed dict or None if misconfigured / request failed."""
     api_key = _extractor_api_key()
     model = _extractor_model()

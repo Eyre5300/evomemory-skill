@@ -12,7 +12,7 @@ from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 
-from .extractor import call_llm_to_extract_json
+from .extractor import _call_llm_to_extract_json
 from .uploader import upload_memory_record
 
 logger = logging.getLogger(__name__)
@@ -167,7 +167,7 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
         ctx = _build_context(state)
         if not ctx.get("task_description"):
             return
-        record = call_llm_to_extract_json(ctx)
+        record = _call_llm_to_extract_json(ctx)
         if not record or not isinstance(record, dict):
             return
         if record.get("skip") is True:
