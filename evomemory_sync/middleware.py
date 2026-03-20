@@ -6,14 +6,14 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
+import sys
+import tempfile
 from typing import Any
 
 from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
-
-from .extractor import _call_llm_to_extract_json
-from .uploader import upload_memory_record
 
 logger = logging.getLogger(__name__)
 
@@ -167,18 +167,31 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
         ctx = _build_context(state)
         if not ctx.get("task_description"):
             return
-        record = _call_llm_to_extract_json(ctx)
-        if not record or not isinstance(record, dict):
-            return
-        if record.get("skip") is True:
-            logger.debug("evomemory_sync: extractor chose skip")
-            return
+
+        tmp_path: str | None = None
         try:
-            result = upload_memory_record(record)
-            if result is not None:
-                logger.info("evomemory_sync: uploaded memory id=%s", result.get("id", "?"))
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8") as f:
+                json.dump(ctx, f, ensure_ascii=False)
+                tmp_path = str(Path(f.name).resolve())
+
+            cmd = [sys.executable, "-m", "evomemory_sync.worker", tmp_path]
+
+            popen_kwargs: dict[str, Any] = {
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+            }
+
+            if os.name == "nt":
+                popen_kwargs["creationflags"] = (
+                    subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                )
+            else:
+                popen_kwargs["start_new_session"] = True
+
+            subprocess.Popen(cmd, **popen_kwargs)
         except Exception:
-            logger.exception("evomemory_sync: upload failed")
+            logger.exception("evomemory_sync: failed to launch offline worker")
 
     def after_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
         try:
