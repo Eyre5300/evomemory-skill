@@ -1,113 +1,75 @@
 # EvoMemory Sync Skill
 
-Connect your EvoScientist to a shared **EvoMemory Hub** — a community memory pool where researchers can browse, share, and learn from each other's research ideas and experiment conclusions.
+Shared **EvoMemory Hub** integration for EvoScientist-style workflows: **automatic post-run sync** via a LangChain `AgentMiddleware`, plus lightweight **CLI** setup and search.
+
+## What’s in the box
+
+| Part | Role |
+|------|------|
+| `evomemory_sync/` | Installable package: `EvoMemorySyncMiddleware`, LLM extractor, Hub uploader |
+| `scripts/setup.py` | Configure `EVOMEMORY_API_BASE_URL` and optional JWT |
+| `scripts/search.py` | Semantic search against the Hub |
 
 ## Installation
 
-In EvoScientist, run:
+### As an EvoScientist skill (documentation + scripts)
 
 ```
 /install-skill github.com/Eyre5300/evomemory-skill
 ```
 
-Or install from local path:
+### As a Python package (required for middleware)
 
-```
-/install-skill /path/to/evomemory-skill
-```
-
-## Quick Setup
-
-### 1) Choose Mode (no domain shown)
+From this repo root:
 
 ```bash
-cd /path/to/evomemory-skill/scripts
+pip install -e .
+```
+
+Use the **same Python environment** as EvoScientist so `import evomemory_sync` works.
+
+## Setup
+
+```bash
+cd scripts
 python setup.py wizard
 ```
 
-You will be asked:
-- Which mode: **Browse (read-only)** or **Share (upload)**
-- Your **Hub URL** (you can paste it when you want; no default is shown)
-- Or choose **Public Hub (invite code)** (the maintainer gives you a code; no domain is shown)
+Browse-only or share (register/login). Credentials go to `.env`.
 
-### 2) Switch later (Browse → Share)
+## Auto-upload middleware
 
-If you started with Browse, you can enable Share any time later by running:
-
-```bash
-python setup.py share
-```
-
-This will:
-1. Prompt for email and password
-2. Automatically register (or login if already registered)
-3. Save your token to `.env`
-
-## Usage
-
-### Search Community Memories
-
-```bash
-# Semantic search (server ranks by vector similarity; default top 10)
-python scripts/search.py ideation "machine learning optimization"
-
-# Return top 20, require similarity >= 0.35
-python scripts/search.py experiment "transformer training strategy" --top-k 20 --min-similarity 0.35
-```
-
-### Push Your Memories
-
-```bash
-# Push an ideation
-python scripts/push.py ideation \
-  --goal "Improve model efficiency" \
-  --title "Sparse attention mechanism" \
-  --core-idea "Use sparse patterns to reduce computation"
-
-# Push an experiment
-python scripts/push.py experiment \
-  --proposal "Test sparse attention on GPT-2" \
-  --data-strategy "WikiText-103 dataset" \
-  --model-strategy "Replace dense attention with sparse"
-```
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `EVOMEMORY_API_BASE_URL` | Yes | Hub URL (e.g., `https://evomem.club`) |
-| `EVOMEMORY_API_TOKEN` | For uploads | JWT token from register/login |
-| `EVOMEMORY_EMBED_BASE_URL` | Optional | Your embedding API (e.g., OpenAI) |
-| `EVOMEMORY_EMBED_API_KEY` | Optional | Your embedding API key |
-| `EVOMEMORY_EMBED_MODEL` | Optional | Model name (e.g., `text-embedding-3-small`) |
-| `EVOMEMORY_EMBEDDING_MODEL_ID` | Optional | Model bucket ID for search |
-
-## Client-Side Embedding
-
-For best search accuracy, configure your own embedding API:
+Set at minimum:
 
 ```env
-EVOMEMORY_EMBED_BASE_URL=https://api.openai.com/v1
-EVOMEMORY_EMBED_API_KEY=sk-...
-EVOMEMORY_EMBED_MODEL=text-embedding-3-small
-EVOMEMORY_EMBEDDING_MODEL_ID=openai-3-small
+EVOMEMORY_API_BASE_URL=https://evomem.club
+EVOMEMORY_API_TOKEN=eyJ...
+EVOMEMORY_EXTRACTOR_MODEL=Qwen/Qwen2.5-7B-Instruct
+EVOMEMORY_EXTRACTOR_API_KEY=sk-...
+# Optional: OpenAI-compatible base (default is SiliconFlow)
+# EVOMEMORY_EXTRACTOR_BASE_URL=https://api.siliconflow.cn/v1
 ```
 
-This ensures:
-- Memories are encoded with YOUR embedding model
-- Search only matches memories from the same model bucket
-- Better semantic accuracy
+Disable without uninstalling:
 
-## Hub URL
+```env
+EVOMEMORY_SYNC_ENABLED=false
+```
 
-Default public Hub: **https://evomem.club** (deployed from `vps_bundle`). To connect:
+### Wiring into EvoScientist
+
+`create_cli_agent` does **not** take `middleware=`. Add `EvoMemorySyncMiddleware()` to the **`mw` list** before `load_mcp_and_build_kwargs(be, mw)`, same as built-in middleware. See **SKILL.md** for a full snippet.
+
+## Search
 
 ```bash
-python setup.py browse --base-url https://evomem.club   # read-only
-python setup.py share --base-url https://evomem.club   # register/login to push memories
+python scripts/search.py ideation "machine learning optimization"
+python scripts/search.py experiment "transformer training" --top-k 20 --min-similarity 0.35
 ```
 
-You can also connect to your own private hub or another community hub.
+## Environment variables
+
+See `references/CONFIG.md` for Hub, embedding, search, extractor, and sync toggles.
 
 ## License
 

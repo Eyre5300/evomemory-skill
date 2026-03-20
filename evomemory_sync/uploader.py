@@ -1,0 +1,209 @@
+"""Push EvoScientist-style memory JSON to EvoMemory Hub (OpenAI-style payloads → REST)."""
+
+from __future__ import annotations
+
+import logging
+import os
+import time
+from typing import Any
+
+import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+logger = logging.getLogger(__name__)
+
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36"
+)
+DEFAULT_ACCEPT = "application/json"
+DEFAULT_ACCEPT_LANGUAGE = "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7"
+
+
+def env(name: str, default: str = "") -> str:
+    v = os.getenv(name)
+    return v.strip() if isinstance(v, str) and v.strip() else default
+
+
+def get_base_url() -> str:
+    base = env("EVOMEMORY_API_BASE_URL", "https://evomem.club")
+    return base.rstrip("/")
+
+
+def hub_headers() -> dict[str, str]:
+    token = env("EVOMEMORY_API_TOKEN")
+    if not token:
+        raise RuntimeError("EVOMEMORY_API_TOKEN is not set")
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "User-Agent": BROWSER_UA,
+        "Accept": DEFAULT_ACCEPT,
+        "Accept-Language": DEFAULT_ACCEPT_LANGUAGE,
+    }
+
+
+def embed_enabled() -> bool:
+    return bool(env("EVOMEMORY_EMBED_BASE_URL") and env("EVOMEMORY_EMBED_API_KEY") and env("EVOMEMORY_EMBED_MODEL"))
+
+
+def embed_model_id() -> str:
+    return env("EVOMEMORY_EMBEDDING_MODEL_ID", env("EVOMEMORY_EMBED_MODEL"))
+
+
+def embed_text(text: str) -> list[float]:
+    base = env("EVOMEMORY_EMBED_BASE_URL").rstrip("/")
+    key = env("EVOMEMORY_EMBED_API_KEY")
+    model = env("EVOMEMORY_EMBED_MODEL")
+    url = base + "/embeddings"
+    payload = {"model": model, "input": text}
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "User-Agent": BROWSER_UA,
+        "Accept": DEFAULT_ACCEPT,
+        "Accept-Language": DEFAULT_ACCEPT_LANGUAGE,
+    }
+    timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "120") or "120")
+    r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=False)
+    r.raise_for_status()
+    data = r.json()
+    vec = data["data"][0]["embedding"]
+    return [float(x) for x in vec]
+
+
+def json_to_ideation_payload(data: dict[str, Any]) -> dict[str, Any]:
+    mem_type = str(data.get("memory_type") or "").strip().lower()
+    status = str(data.get("status") or "").strip().lower()
+    if mem_type != "ideation":
+        raise ValueError("not an ideation JSON")
+
+    if status == "failed":
+        proposal = str(data.get("proposal_summary") or "").strip()
+        trigger = str(data.get("trigger_conditions") or data.get("trigger") or "").strip()
+        do_not = str(
+            data.get("do_not_repeat_notes")
+            or data.get("do_not_repeat")
+            or data.get("countermeasures")
+            or ""
+        ).strip()
+        tags = str(data.get("retrieval_tags") or data.get("tags") or "").strip()
+        first_line = (proposal.split("\n")[0] or "Failed proposal").strip()
+        core_parts = [proposal]
+        if trigger:
+            core_parts.append("\n\nTrigger: " + trigger)
+        if do_not:
+            core_parts.append("\n\nDo-not-repeat: " + do_not)
+        return {
+            "goal": "Failed ideation",
+            "type": "failed",
+            "title": first_line[:200],
+            "core_idea": "".join(core_parts).strip(),
+            "requirements": tags or "(none)",
+        }
+
+    goal = str(data.get("goal") or "").strip()
+    title = str(data.get("title") or "").strip()
+    core = str(data.get("core_idea") or "").strip()
+    why = str(data.get("why_promising") or "").strip()
+    req = str(data.get("requirements") or "").strip()
+    validation = str(data.get("validation_plan") or data.get("minimal_validation_plan") or "").strip()
+    core_idea = (core + ("\n\nWhy promising: " + why if why else "")).strip()
+    requirements = (req + ("\n\nValidation plan: " + validation if validation else "")).strip()
+    return {
+        "goal": goal or "(unknown goal)",
+        "type": "promising",
+        "title": title or "(untitled)",
+        "core_idea": core_idea or "(empty)",
+        "requirements": requirements or "(empty)",
+    }
+
+
+def json_to_experiment_payload(data: dict[str, Any]) -> dict[str, Any]:
+    mem_type = str(data.get("memory_type") or "").strip().lower()
+    if mem_type != "experiment":
+        raise ValueError("not an experiment JSON")
+    proposal = str(
+        data.get("task_description")
+        or data.get("proposal_context")
+        or data.get("research_task")
+        or ""
+    ).strip()
+    data_s = str(data.get("data_summary") or data.get("data_strategy") or "").strip()
+    model_s = str(data.get("model_summary") or data.get("model_strategy") or "").strip()
+    env_s = str(data.get("environment_constraints") or data.get("environment") or "").strip()
+    status = str(data.get("status") or "").strip()
+    if status:
+        env_s = (env_s + "\n\nStatus: " + status).strip()
+    return {
+        "proposal_context": proposal or "(untitled experiment)",
+        "data_strategy": data_s or "(unknown)",
+        "model_strategy": model_s or "(unknown)",
+        "environment": env_s or "(none)",
+    }
+
+
+def post_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+    timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "120") or "120")
+    max_retries = 2
+    last_exc: Exception | None = None
+    req_headers = dict(headers)
+    req_headers.setdefault("User-Agent", BROWSER_UA)
+    req_headers.setdefault("Accept", DEFAULT_ACCEPT)
+    req_headers.setdefault("Accept-Language", DEFAULT_ACCEPT_LANGUAGE)
+    req_headers.setdefault("Content-Type", "application/json")
+
+    for attempt in range(max_retries):
+        try:
+            r = requests.post(url, json=payload, headers=req_headers, timeout=timeout, verify=False)
+            if 200 <= r.status_code < 300:
+                return r.json()
+            try:
+                detail = r.json()
+            except Exception:
+                detail = r.text
+            raise RuntimeError(f"HTTP {r.status_code}: {detail}")
+        except Exception as e:
+            last_exc = e
+            if attempt < max_retries - 1:
+                time.sleep(2**attempt)
+                continue
+            raise
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("post_json failed")
+
+
+def upload_memory_record(data: dict[str, Any]) -> dict[str, Any] | None:
+    """Map extractor JSON to Hub upload endpoints. Returns API JSON or None if skipped."""
+    if not isinstance(data, dict) or data.get("skip") is True:
+        return None
+
+    base = get_base_url()
+    headers = hub_headers()
+    mem_type = str(data.get("memory_type") or "").strip().lower()
+
+    if mem_type == "ideation":
+        body = json_to_ideation_payload(data)
+        url = f"{base}/memory/ideation/upload"
+    elif mem_type == "experiment":
+        body = json_to_experiment_payload(data)
+        url = f"{base}/memory/experiment/upload"
+    else:
+        logger.debug("evomemory_sync: unknown memory_type %r, skip upload", data.get("memory_type"))
+        return None
+
+    if embed_enabled():
+        if mem_type == "ideation":
+            text = "\n".join([body["goal"], body["title"], body["core_idea"], body["requirements"]])
+        else:
+            text = "\n".join(
+                [body["proposal_context"], body["data_strategy"], body["model_strategy"], body["environment"]]
+            )
+        body["embedding"] = embed_text(text)
+        body["embedding_model_id"] = embed_model_id()
+
+    return post_json(url, body, headers)

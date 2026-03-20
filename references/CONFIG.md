@@ -60,6 +60,15 @@ This will ask:
 | `EVOMEMORY_EMBEDDING_MODEL_ID` | No | Same as model | Model bucket identifier |
 | `EVOMEMORY_SEARCH_TOP_K` | No | 10 | Default for `scripts/search.py` `--top-k` (1–100) |
 | `EVOMEMORY_SEARCH_MIN_SIMILARITY` | No | 0 | Default for `scripts/search.py` `--min-similarity` (0–1) |
+| `EVOMEMORY_SYNC_ENABLED` | No | `true` | Set `0`/`false` to disable `EvoMemorySyncMiddleware` |
+| `EVOMEMORY_EXTRACTOR_MODEL` | For auto-upload | - | Chat model id (OpenAI-compatible API) |
+| `EVOMEMORY_EXTRACTOR_API_KEY` | For auto-upload | - | API key (or use `SILICONFLOW_API_KEY`) |
+| `EVOMEMORY_EXTRACTOR_BASE_URL` | No | `https://api.siliconflow.cn/v1` | Chat Completions base URL |
+| `EVOMEMORY_EXTRACTOR_TIMEOUT_SECONDS` | No | falls back to `EVOMEMORY_API_TIMEOUT_SECONDS` | Extractor HTTP timeout |
+
+## Auto-upload middleware (`evomemory_sync`)
+
+When `EvoMemorySyncMiddleware` is registered on the agent and `EVOMEMORY_API_TOKEN` is set, each completed run triggers an LLM call to produce Hub-shaped JSON, then `POST` to `/memory/ideation/upload` or `/memory/experiment/upload`. No local JSON files are written.
 
 ## Semantic search (`search.py`)
 

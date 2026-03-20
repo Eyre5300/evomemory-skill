@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "evomemory-sync"
+version = "0.2.0"
+description = "EvoMemory Hub sync: LangChain AgentMiddleware + CLI search/setup"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "langchain>=1.2.0",
+    "langchain-core>=0.3.0",
+    "langgraph>=0.2.0",
+    "requests>=2.28.0",
+    "urllib3>=2.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.5"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["evomemory_sync"]
