@@ -72,7 +72,8 @@ def prompt_base_url() -> str:
 def env_path(target: Optional[str]) -> Path:
     if target:
         return Path(target).expanduser().resolve()
-    return (Path.cwd() / ".env").resolve()
+    # Keep a single default env source at repo root.
+    return (Path(__file__).resolve().parent.parent / ".env").resolve()
 
 
 def write_env_kv(path: Path, updates: Dict[str, str]) -> None:
@@ -293,13 +294,13 @@ def main():
     # browse command
     p_browse = subparsers.add_parser("browse", help="Browse-only mode")
     p_browse.add_argument("--base-url", help="EvoMemory Hub URL (optional; will prompt if omitted)")
-    p_browse.add_argument("--env-file", help="Path to .env file (default: ./.env)")
+    p_browse.add_argument("--env-file", help="Path to .env file (default: <repo>/.env)")
     p_browse.set_defaults(func=cmd_browse)
 
     # share command
     p_share = subparsers.add_parser("share", help="Share mode (register/login)")
     p_share.add_argument("--base-url", help="EvoMemory Hub URL (optional; will prompt if omitted)")
-    p_share.add_argument("--env-file", help="Path to .env file (default: ./.env)")
+    p_share.add_argument("--env-file", help="Path to .env file (default: <repo>/.env)")
     p_share.add_argument("--mode", choices=["auto", "register", "login"], default="auto",
                          help="auto=try register then login")
     p_share.add_argument("--insecure", action="store_true", help="Disable TLS certificate verification (use for HTTPS+IP troubleshooting)")
@@ -307,7 +308,7 @@ def main():
 
     # wizard command
     p_wizard = subparsers.add_parser("wizard", help="Interactive setup wizard (recommended)")
-    p_wizard.add_argument("--env-file", help="Path to .env file (default: ./.env)")
+    p_wizard.add_argument("--env-file", help="Path to .env file (default: <repo>/.env)")
     p_wizard.add_argument("--insecure", action="store_true", help="Disable TLS certificate verification during share step")
     p_wizard.set_defaults(func=cmd_wizard)
 

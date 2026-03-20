@@ -28,21 +28,25 @@ except ImportError:
 
 
 def _load_local_env_file() -> None:
-    env_file = Path(__file__).resolve().parent / ".env"
-    if not env_file.exists():
-        return
-    try:
-        for line in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
-            raw = line.strip()
-            if not raw or raw.startswith("#") or "=" not in raw:
-                continue
-            k, v = raw.split("=", 1)
-            key = k.strip()
-            val = v.strip().strip('"').strip("'")
-            if key and os.getenv(key) is None:
-                os.environ[key] = val
-    except Exception:
-        pass
+    candidates = [
+        Path(__file__).resolve().parent.parent / ".env",  # repo root (canonical)
+        Path(__file__).resolve().parent / ".env",  # legacy scripts/.env
+    ]
+    for env_file in candidates:
+        if not env_file.exists():
+            continue
+        try:
+            for line in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                raw = line.strip()
+                if not raw or raw.startswith("#") or "=" not in raw:
+                    continue
+                k, v = raw.split("=", 1)
+                key = k.strip()
+                val = v.strip().strip('"').strip("'")
+                if key and os.getenv(key) is None:
+                    os.environ[key] = val
+        except Exception:
+            pass
 
 
 _load_local_env_file()
@@ -51,8 +55,12 @@ try:
     # Allow `python scripts/setup.py browse|share` to persist config in scripts/.env.
     from dotenv import load_dotenv
 
-    dotenv_path = Path(__file__).resolve().parent / ".env"
-    load_dotenv(dotenv_path=str(dotenv_path), override=False)
+    root_env = Path(__file__).resolve().parent.parent / ".env"
+    scripts_env = Path(__file__).resolve().parent / ".env"
+    if root_env.exists():
+        load_dotenv(dotenv_path=str(root_env), override=False)
+    if scripts_env.exists():
+        load_dotenv(dotenv_path=str(scripts_env), override=False)
 except Exception:
     pass
 

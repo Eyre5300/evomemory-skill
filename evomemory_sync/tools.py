@@ -28,10 +28,13 @@ try:
     from dotenv import load_dotenv
 
     repo_root = Path(__file__).resolve().parent.parent
-    env_path = repo_root / "scripts" / ".env"
-    if env_path.exists():
-        load_dotenv(dotenv_path=str(env_path), override=False)
-    else:
+    root_env = repo_root / ".env"
+    scripts_env = repo_root / "scripts" / ".env"
+    if root_env.exists():
+        load_dotenv(dotenv_path=str(root_env), override=False)
+    if scripts_env.exists():
+        load_dotenv(dotenv_path=str(scripts_env), override=False)
+    if not root_env.exists() and not scripts_env.exists():
         load_dotenv(override=False)
 except Exception:
     pass

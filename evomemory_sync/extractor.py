@@ -33,6 +33,41 @@ def _extractor_model() -> str:
     return _env("EVOMEMORY_EXTRACTOR_MODEL")
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _sanitize_text(text: str) -> str:
+    s = text
+    # Secrets / tokens / API keys (generic and provider-specific)
+    s = re.sub(r"(?i)\b(sk|api[_-]?key|access[_-]?token|secret|password|passwd)\b\s*[:=]\s*['\"]?[A-Za-z0-9_\-\.=+/]{8,}['\"]?", r"\1=[REDACTED]", s)
+    s = re.sub(r"\bsk-[A-Za-z0-9]{10,}\b", "[REDACTED]", s)
+    s = re.sub(r"\b(ghp|github_pat|xoxb|xoxp|AKIA)[A-Za-z0-9_\-]{8,}\b", "[REDACTED]", s)
+    # File paths (Windows + Unix-like absolute paths)
+    s = re.sub(r"[A-Za-z]:\\(?:[^\\\s\"']+\\)*[^\\\s\"']*", "[REDACTED]", s)
+    s = re.sub(r"/(?:Users|home|root|var|tmp|private|opt|etc)/[^\s\"']+", "[REDACTED]", s)
+    # IPv4
+    s = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[REDACTED]", s)
+    # MAC
+    s = re.sub(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b", "[REDACTED]", s)
+    # Email
+    s = re.sub(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b", "[REDACTED]", s)
+    return s
+
+
+def _sanitize_context(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _sanitize_context(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_context(v) for v in value]
+    if isinstance(value, str):
+        return _sanitize_text(value)
+    return value
+
+
 def _parse_json_object(text: str) -> dict[str, Any]:
     text = text.strip()
     fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
@@ -114,7 +149,9 @@ def _call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:
     url = f"{base}/chat/completions"
     timeout = float(_env("EVOMEMORY_EXTRACTOR_TIMEOUT_SECONDS", _env("EVOMEMORY_API_TIMEOUT_SECONDS", "120")) or "120")
 
-    user_content = json.dumps(context, ensure_ascii=False, indent=2)
+    sanitize_enabled = _env_bool("EVOMEMORY_SYNC_SEND_RAW_CONTEXT", False) is False
+    safe_context = _sanitize_context(context) if sanitize_enabled else context
+    user_content = json.dumps(safe_context, ensure_ascii=False, indent=2)
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
