@@ -101,6 +101,11 @@ Load `.env` before starting the CLI (or rely on the middleware’s optional `pyt
 search_evomemory(query="xxx", memory_kind="ideation" | "experiment")
 ```
 
+建议约定：
+- `memory_kind="ideation"`：用于检索历史构思、失败案例和避坑经验（更适合“报错了怎么避坑”）。
+- `memory_kind="experiment"`：用于检索可复用实验策略与结果（更适合“下一步怎么做实验”）。
+- `query` 尽量写清楚当前任务、报错关键词或研究目标，检索效果会更好。
+
 ## How the middleware decides M_I vs M_E
 
 On `after_agent` / `aafter_agent` it builds a context object from `state["messages"]`:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Any, Dict, List, Tuple
 
 import requests
 from langchain_core.tools import tool
@@ -13,9 +13,6 @@ from .uploader import (
     BROWSER_UA,
     DEFAULT_ACCEPT,
     DEFAULT_ACCEPT_LANGUAGE,
-    embed_enabled,
-    embed_model_id,
-    embed_text,
     get_base_url,
 )
 
@@ -142,7 +139,7 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
 
 @tool
 def search_evomemory(query: str, memory_kind: str) -> str:
-    """当你缺乏研究思路，或者代码执行遇到棘手报错时，调用此工具检索 EvoMemory Hub 社区的历史经验、避坑指南和成功实验。这能帮你快速找到相似研究方向、复用可行方案并避免重复踩坑。参数 `memory_kind` 只允许 `ideation` 或 `experiment`。"""
+    """在以下场景请优先调用此工具：你缺乏研究思路、需要快速借鉴社区方案、或者代码执行遇到棘手报错难以推进。它会检索 EvoMemory Hub 社区历史经验，返回高相关的标题、核心思路、失败案例避坑指南和成功实验摘要，帮助你避免重复踩坑并缩短试错时间。使用要求：`query` 填当前问题或目标关键词；`memory_kind` 必须是 `ideation`（构思/避坑）或 `experiment`（实验策略/结果）。当你卡住、报错反复出现、或需要下一步行动建议时，立即调用本工具。"""
 
     ok, kind = _validate_kind(memory_kind)
     if not ok:
@@ -157,18 +154,13 @@ def search_evomemory(query: str, memory_kind: str) -> str:
     payload: Dict[str, Any] = {
         "top_k": _default_top_k(),
         "min_similarity": _default_min_similarity(),
+        "query_text": q,
     }
 
     headers = _optional_auth_headers()
     timeout = float(_env("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
 
     try:
-        if embed_enabled():
-            payload["query_embedding"] = embed_text(q)
-            payload["embedding_model_id"] = embed_model_id()
-        else:
-            payload["query_text"] = q
-
         r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=False)
         if r.status_code >= 400:
             try:
