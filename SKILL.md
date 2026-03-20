@@ -68,6 +68,7 @@ from deepagents import create_deep_agent
 from EvoScientist.EvoScientist import load_mcp_and_build_kwargs
 from EvoScientist.middleware import ToolErrorHandlerMiddleware, create_memory_middleware
 from evomemory_sync import EvoMemorySyncMiddleware
+from evomemory_sync.tools import search_evomemory
 
 # After you construct backends `be`, memory dir `_mem_dir`, and your chat model:
 mw = [
@@ -78,6 +79,7 @@ mw = [
 # If you use AskUserMiddleware, insert it as EvoScientist does (often `mw.insert(0, ...)`).
 
 kwargs = load_mcp_and_build_kwargs(be, mw)
+kwargs["tools"].append(search_evomemory)  # 注入：让智能体在执行中主动检索社区记忆
 agent = create_deep_agent(
     **kwargs,
     checkpointer=checkpointer,
@@ -86,6 +88,14 @@ agent = create_deep_agent(
 ```
 
 Load `.env` before starting the CLI (or rely on the middleware’s optional `python-dotenv` load on first run).
+
+### 主动检索工具（search_evomemory）
+
+把 `search_evomemory` 注入到 `tools` 列表后，大模型可以在研究思路不足或遇到棘手报错时，主动调用：
+
+```text
+search_evomemory(query="xxx", memory_kind="ideation" | "experiment")
+```
 
 ## How the middleware decides M_I vs M_E
 
