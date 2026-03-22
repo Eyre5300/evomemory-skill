@@ -40,7 +40,8 @@ vps_bundle 中 `memory_router` 挂载在应用根路径（无 `/api` 前缀）�
 
 - **实验 → 构思**：上传实验时 JSON 可带 `parent_ideation_id`（需指向已存在且**公开**的构思）。`evomemory_sync.uploader.json_to_experiment_payload` 与 `agent_tools.share_successful_experiment` 已支持该字段。
 - **工作流 → 构思 / 实验**：`POST /memory/workflow/upload` 可带 `parent_ideation_id`、`parent_experiment_id`（实验须为**当前用户**所有且父构思校验通过）。Extractor 在 `memory_type: "workflow"` 时由 `json_to_workflow_payload` 映射；Agent 可调用 **`share_workflow`**。
-- **检索**：构思 / 实验为向量检索 `POST /memory/{ideation|experiment}/search`。工作流在 Hub 侧仅有 **`GET /memory/workflow/list`**，skill 中 `search_evomemory(..., "workflow")` 与 **`python scripts/search.py workflow "<关键词>"`** 为拉取列表后在客户端按关键词过滤，**不是**向量相似度检索。
+- **检索**：构思 / 实验 / 工作流均为向量检索：`POST /memory/ideation/search`、`POST /memory/experiment/search`、`POST /memory/workflow/search`（`QueryRequest`：`query_text` 或 `query_embedding`）。skill 的 `search_evomemory(..., "workflow")` 与 **`python scripts/search.py workflow "..."`** 与此一致。
+- **仅改父级链接**：`PATCH /memory/experiment/{id}/parent`（body: `parent_ideation_id`）、`PATCH /memory/workflow/{id}/parents`（可只传要改的字段，服务端会与其余字段合并）。skill 提供 **`patch_experiment_parent_link` / `patch_workflow_parent_links`** 与 CLI **`scripts/patch_links.py`**。
 
 ## 自检
 

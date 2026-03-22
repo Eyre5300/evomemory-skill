@@ -8,6 +8,7 @@ Usage:
 
 Env defaults (optional):
     EVOMEMORY_API_BASE_URL (canonical default: https://evomem.club; runtime may probe HTTP / IP fallbacks)
+    kind=workflow uses POST /memory/workflow/search (vector similarity, same as ideation/experiment).
     EVOMEMORY_SEARCH_TOP_K, EVOMEMORY_SEARCH_MIN_SIMILARITY
 """
 
@@ -137,40 +138,6 @@ def default_min_similarity() -> float:
 def search(kind: str, query: str, top_k: int, min_similarity: float, insecure: bool = False) -> List[dict[str, Any]]:
     base = get_base_url()
     timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
-
-    if kind == "workflow":
-        # Hub has GET /memory/workflow/list only (no vector search for workflows).
-        limit = max(1, min(100, top_k))
-        with httpx.Client(timeout=timeout, verify=not insecure) as client:
-            try:
-                r = client.get(
-                    f"{base}/memory/workflow/list",
-                    params={"limit": limit, "offset": 0},
-                    headers=get_headers(),
-                )
-            except Exception as e:
-                print(f"Error: request failed: {type(e).__name__}: {e}")
-                sys.exit(1)
-            if r.status_code >= 400:
-                try:
-                    detail = r.json()
-                except Exception:
-                    detail = r.text
-                print(f"Error: {r.status_code} {detail}")
-                sys.exit(1)
-            data = r.json()
-            raw = data.get("results") or []
-        qlow = (query or "").strip().lower()
-        if not qlow:
-            return raw
-        out: List[dict[str, Any]] = []
-        for row in raw:
-            blob = json.dumps(row, ensure_ascii=False).lower()
-            if qlow in blob:
-                row = dict(row)
-                row["similarity_score"] = 1.0
-                out.append(row)
-        return out
 
     url = f"{base}/memory/{kind}/search"
     payload: dict[str, Any] = {
@@ -312,7 +279,7 @@ def main():
     parser.add_argument(
         "kind",
         choices=["ideation", "experiment", "workflow"],
-        help="Memory type (workflow: list public workflows + keyword filter; no vector search)",
+        help="Memory type (all use Hub vector search when query_text is used)",
     )
     parser.add_argument("query", help="Search query text")
     parser.add_argument(
@@ -360,12 +327,8 @@ def main():
     min_sim = args.min_similarity if args.min_similarity is not None else default_min_similarity()
     min_sim = max(0.0, min(1.0, min_sim))
     
-    if args.kind == "workflow":
-        print(f"Listing workflow memories (keyword filter): {args.query!r}")
-        print(f"(top_k={top_k}, min_similarity ignored for workflow list)")
-    else:
-        print(f"Searching {args.kind} memories for: {args.query}")
-        print(f"(top_k={top_k}, min_similarity={min_sim})")
+    print(f"Searching {args.kind} memories for: {args.query}")
+    print(f"(top_k={top_k}, min_similarity={min_sim})")
     print()
     
     results = search(args.kind, args.query, top_k, min_sim, insecure=args.insecure)

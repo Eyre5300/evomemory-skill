@@ -43,6 +43,7 @@ except Exception:
     pass
 
 _DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+_UNSET = object()
 
 
 def _base_url() -> str:
@@ -209,6 +210,56 @@ async def share_workflow(
         response = await client.post(
             f"{base}/memory/workflow/upload",
             json=payload,
+            headers=get_headers(),
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+async def patch_experiment_parent_link(
+    memory_id: str,
+    parent_ideation_id: Any = _UNSET,
+) -> dict[str, Any]:
+    """PATCH /memory/experiment/{id}/parent — set or clear parent ideation (author only).
+
+    Pass ``parent_ideation_id=None`` to clear. Omit by using the default to skip the call
+    (you must pass a value to perform a PATCH).
+    """
+    if parent_ideation_id is _UNSET:
+        raise ValueError("parent_ideation_id is required (use None to clear the link)")
+    base = _base_url()
+    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=False) as client:
+        response = await client.patch(
+            f"{base}/memory/experiment/{memory_id}/parent",
+            json={"parent_ideation_id": parent_ideation_id},
+            headers=get_headers(),
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+async def patch_workflow_parent_links(
+    memory_id: str,
+    parent_ideation_id: Any = _UNSET,
+    parent_experiment_id: Any = _UNSET,
+) -> dict[str, Any]:
+    """PATCH /memory/workflow/{id}/parents — update one or both parents (author only).
+
+    Use ``None`` for a field to clear it. Omit a parameter (leave default) to keep the
+    server-side merge behavior for that field.
+    """
+    body: dict[str, Any] = {}
+    if parent_ideation_id is not _UNSET:
+        body["parent_ideation_id"] = parent_ideation_id
+    if parent_experiment_id is not _UNSET:
+        body["parent_experiment_id"] = parent_experiment_id
+    if not body:
+        raise ValueError("pass at least one of parent_ideation_id or parent_experiment_id")
+    base = _base_url()
+    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=False) as client:
+        response = await client.patch(
+            f"{base}/memory/workflow/{memory_id}/parents",
+            json=body,
             headers=get_headers(),
         )
         response.raise_for_status()

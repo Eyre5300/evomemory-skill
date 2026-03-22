@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -108,7 +107,7 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
             peid = str(item.get("parent_experiment_id") or "") or "—"
             lines = [
                 f"[{i}] {title}",
-                f"    摘要: {desc}" if desc else "",
+                f"    描述: {desc}" if desc else "",
                 f"    parent_ideation_id: {pid}",
                 f"    parent_experiment_id: {peid}",
                 f"    相似度 {pick_similarity(item)}" if pick_similarity(item) else "",
@@ -145,7 +144,7 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
 
 @tool
 def search_evomemory(query: str, memory_kind: str) -> str:
-    """在以下场景请优先调用此工具：你缺乏研究思路、需要快速借鉴社区方案、或者代码执行遇到棘手报错难以推进。它会检索 EvoMemory Hub 社区历史经验，返回高相关的标题、核心思路、失败案例避坑指南和成功实验摘要，帮助你避免重复踩坑并缩短试错时间。使用要求：`query` 填当前问题或目标关键词；`memory_kind` 为 `ideation`、`experiment`，或 `workflow`（Hub 暂无向量检索工作流，将拉取公开列表并按关键词在标题/描述中过滤）。当你卡住、报错反复出现、或需要下一步行动建议时，立即调用本工具。"""
+    """在以下场景请优先调用此工具：你缺乏研究思路、需要快速借鉴社区方案、或者代码执行遇到棘手报错难以推进。它会检索 EvoMemory Hub 社区历史经验（向量相似度）。`memory_kind` 为 `ideation`、`experiment` 或 `workflow`。"""
 
     ok, kind = _validate_kind(memory_kind)
     if not ok:
@@ -160,36 +159,6 @@ def search_evomemory(query: str, memory_kind: str) -> str:
     timeout = float(_env("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
 
     try:
-        if kind == "workflow":
-            # Hub exposes list, not semantic search for workflows.
-            limit = min(100, max(1, _default_top_k()))
-            r = requests.get(
-                f"{base}/memory/workflow/list",
-                params={"limit": limit, "offset": 0},
-                headers=headers,
-                timeout=timeout,
-                verify=False,
-            )
-            if r.status_code >= 400:
-                try:
-                    detail = r.json()
-                except Exception:
-                    detail = r.text
-                return f"检索失败：Hub 返回 HTTP {r.status_code}。详细信息：{detail}"
-            data = r.json()
-            raw: List[Dict[str, Any]] = data.get("results") or []
-            qlow = q.lower()
-            results = [
-                row
-                for row in raw
-                if qlow in json.dumps(row, ensure_ascii=False).lower()
-            ]
-            if not results:
-                return f"没有在公开工作流列表中找到包含 {q!r} 的条目（已扫描最近 {len(raw)} 条）。"
-            for row in results:
-                row["similarity"] = 1.0
-            return _format_results(kind, results, max_items=5)
-
         url = f"{base}/memory/{kind}/search"
         payload: Dict[str, Any] = {
             "top_k": _default_top_k(),
