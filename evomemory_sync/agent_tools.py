@@ -103,6 +103,24 @@ async def _maybe_add_experiment_embedding(body: dict[str, Any]) -> dict[str, Any
     return out
 
 
+async def _maybe_add_workflow_embedding(body: dict[str, Any]) -> dict[str, Any]:
+    if not embed_enabled():
+        return body
+    text = "\n".join(
+        [
+            body["title"],
+            body["description"],
+            body["prompt_templates"],
+            body["tool_configuration"],
+        ]
+    )
+    vec = await asyncio.to_thread(embed_text, text)
+    out = dict(body)
+    out["embedding"] = vec
+    out["embedding_model_id"] = embed_model_id()
+    return out
+
+
 async def share_failed_ideation(
     goal: str,
     title: str,
@@ -159,6 +177,37 @@ async def share_successful_experiment(
     async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=False) as client:
         response = await client.post(
             f"{base}/memory/experiment/upload",
+            json=payload,
+            headers=get_headers(),
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+async def share_workflow(
+    title: str,
+    description: str,
+    prompt_templates: str,
+    tool_configuration: str,
+    parent_ideation_id: Optional[str] = None,
+    parent_experiment_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Archive a reusable workflow (prompts + tool configuration) to the Hub."""
+    payload = _strip_none(
+        {
+            "title": title,
+            "description": description,
+            "prompt_templates": prompt_templates,
+            "tool_configuration": tool_configuration,
+            "parent_ideation_id": parent_ideation_id,
+            "parent_experiment_id": parent_experiment_id,
+        }
+    )
+    payload = await _maybe_add_workflow_embedding(payload)
+    base = _base_url()
+    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=False) as client:
+        response = await client.post(
+            f"{base}/memory/workflow/upload",
             json=payload,
             headers=get_headers(),
         )

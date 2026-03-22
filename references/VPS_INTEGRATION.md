@@ -36,8 +36,15 @@
 
 vps_bundle 中 `memory_router` 挂载在应用根路径（无 `/api` 前缀），因此 skill 中使用的路径如 `/auth/login`、`/memory/...` 与服务器路由一一对应。
 
+## 构思 / 实验 / 工作流关联（与 vps_bundle 对齐）
+
+- **实验 → 构思**：上传实验时 JSON 可带 `parent_ideation_id`（需指向已存在且**公开**的构思）。`evomemory_sync.uploader.json_to_experiment_payload` 与 `agent_tools.share_successful_experiment` 已支持该字段。
+- **工作流 → 构思 / 实验**：`POST /memory/workflow/upload` 可带 `parent_ideation_id`、`parent_experiment_id`（实验须为**当前用户**所有且父构思校验通过）。Extractor 在 `memory_type: "workflow"` 时由 `json_to_workflow_payload` 映射；Agent 可调用 **`share_workflow`**。
+- **检索**：构思 / 实验为向量检索 `POST /memory/{ideation|experiment}/search`。工作流在 Hub 侧仅有 **`GET /memory/workflow/list`**，skill 中 `search_evomemory(..., "workflow")` 与 **`python scripts/search.py workflow "<关键词>"`** 为拉取列表后在客户端按关键词过滤，**不是**向量相似度检索。
+
 ## 自检
 
 1. 浏览器打开规范地址 `https://evomem.club`（或你的 Hub），确认服务可访问。
 2. `python scripts/setup.py share --base-url https://evomem.club`，完成注册或登录，检查 `.env` 中 **`EVOMEMORY_API_BASE_URL`**（HTTPS）与 **`EVOMEMORY_API_TOKEN`**。
 3. 在 Cursor 中触发一次同步或搜索，确认无 401/连接错误。
+4. 可选：`python scripts/search.py workflow "关键词" --insecure`（若使用 HTTPS+IP）。

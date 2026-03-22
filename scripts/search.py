@@ -136,13 +136,48 @@ def default_min_similarity() -> float:
 
 def search(kind: str, query: str, top_k: int, min_similarity: float, insecure: bool = False) -> List[dict[str, Any]]:
     base = get_base_url()
+    timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
+
+    if kind == "workflow":
+        # Hub has GET /memory/workflow/list only (no vector search for workflows).
+        limit = max(1, min(100, top_k))
+        with httpx.Client(timeout=timeout, verify=not insecure) as client:
+            try:
+                r = client.get(
+                    f"{base}/memory/workflow/list",
+                    params={"limit": limit, "offset": 0},
+                    headers=get_headers(),
+                )
+            except Exception as e:
+                print(f"Error: request failed: {type(e).__name__}: {e}")
+                sys.exit(1)
+            if r.status_code >= 400:
+                try:
+                    detail = r.json()
+                except Exception:
+                    detail = r.text
+                print(f"Error: {r.status_code} {detail}")
+                sys.exit(1)
+            data = r.json()
+            raw = data.get("results") or []
+        qlow = (query or "").strip().lower()
+        if not qlow:
+            return raw
+        out: List[dict[str, Any]] = []
+        for row in raw:
+            blob = json.dumps(row, ensure_ascii=False).lower()
+            if qlow in blob:
+                row = dict(row)
+                row["similarity_score"] = 1.0
+                out.append(row)
+        return out
+
     url = f"{base}/memory/{kind}/search"
-    
     payload: dict[str, Any] = {
         "top_k": top_k,
         "min_similarity": min_similarity,
     }
-    
+
     if embed_enabled():
         print(f"Generating embedding with {env('EVOMEMORY_EMBED_MODEL')}...")
         payload["query_embedding"] = embed_text(query)
@@ -150,7 +185,6 @@ def search(kind: str, query: str, top_k: int, min_similarity: float, insecure: b
     else:
         payload["query_text"] = query
 
-    timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
     with httpx.Client(timeout=timeout, verify=not insecure) as client:
         try:
             r = client.post(url, json=payload, headers=get_headers())
@@ -212,13 +246,30 @@ def format_experiment(item: dict[str, Any], idx: int, full_text: bool = False) -
     model_s = _preview(item.get("model_strategy") or "?", 260, full_text)
     env_s = _preview(item.get("environment") or "?", 260, full_text)
     status = _preview(item.get("status") or "?", 40, full_text)
+    pid = str(item.get("parent_ideation_id") or "").strip() or "—"
     lines = [
         f"[{idx}] {proposal}",
         f"    Status: {status}",
+        f"    Parent ideation: {pid}",
         f"    Data Strategy: {data_s}",
         f"    Model Strategy: {model_s}",
         f"    Environment: {env_s}",
         f"    Similarity: {_similarity_text(item)}",
+    ]
+    return "\n".join(lines)
+
+
+def format_workflow(item: dict[str, Any], idx: int, full_text: bool = False) -> str:
+    title = _preview(item.get("title") or "(untitled)", 180, full_text)
+    desc = _preview(item.get("description") or "?", 400, full_text)
+    pid = str(item.get("parent_ideation_id") or "").strip() or "—"
+    peid = str(item.get("parent_experiment_id") or "").strip() or "—"
+    lines = [
+        f"[{idx}] {title}",
+        f"    parent_ideation_id: {pid}",
+        f"    parent_experiment_id: {peid}",
+        f"    Description: {desc}",
+        f"    Match: {_similarity_text(item)}",
     ]
     return "\n".join(lines)
 
@@ -258,7 +309,11 @@ def main():
     parser = argparse.ArgumentParser(
         description="Semantic search EvoMemory Hub (cosine similarity via pgvector; top results ordered by similarity)"
     )
-    parser.add_argument("kind", choices=["ideation", "experiment"], help="Memory type")
+    parser.add_argument(
+        "kind",
+        choices=["ideation", "experiment", "workflow"],
+        help="Memory type (workflow: list public workflows + keyword filter; no vector search)",
+    )
     parser.add_argument("query", help="Search query text")
     parser.add_argument(
         "--top-k",
@@ -305,8 +360,12 @@ def main():
     min_sim = args.min_similarity if args.min_similarity is not None else default_min_similarity()
     min_sim = max(0.0, min(1.0, min_sim))
     
-    print(f"Searching {args.kind} memories for: {args.query}")
-    print(f"(top_k={top_k}, min_similarity={min_sim})")
+    if args.kind == "workflow":
+        print(f"Listing workflow memories (keyword filter): {args.query!r}")
+        print(f"(top_k={top_k}, min_similarity ignored for workflow list)")
+    else:
+        print(f"Searching {args.kind} memories for: {args.query}")
+        print(f"(top_k={top_k}, min_similarity={min_sim})")
     print()
     
     results = search(args.kind, args.query, top_k, min_sim, insecure=args.insecure)
@@ -334,6 +393,8 @@ def main():
     for i, item in enumerate(filtered, 1):
         if args.kind == "ideation":
             print(format_ideation(item, i, full_text=args.show_full_text))
+        elif args.kind == "workflow":
+            print(format_workflow(item, i, full_text=args.show_full_text))
         else:
             print(format_experiment(item, i, full_text=args.show_full_text))
         print()

@@ -142,12 +142,47 @@ def json_to_experiment_payload(data: dict[str, Any]) -> dict[str, Any]:
     status = str(data.get("status") or "").strip()
     if status:
         env_s = (env_s + "\n\nStatus: " + status).strip()
-    return {
+    out: dict[str, Any] = {
         "proposal_context": proposal or "(untitled experiment)",
         "data_strategy": data_s or "(unknown)",
         "model_strategy": model_s or "(unknown)",
         "environment": env_s or "(none)",
     }
+    pid = data.get("parent_ideation_id") or data.get("parent_ideation")
+    if pid is not None and str(pid).strip():
+        out["parent_ideation_id"] = str(pid).strip()
+    hw = data.get("hardware_requirements")
+    if hw is not None and str(hw).strip():
+        out["hardware_requirements"] = str(hw).strip()
+    sw = data.get("software_dependencies")
+    if sw is not None and str(sw).strip():
+        out["software_dependencies"] = str(sw).strip()
+    return out
+
+
+def json_to_workflow_payload(data: dict[str, Any]) -> dict[str, Any]:
+    mem_type = str(data.get("memory_type") or "").strip().lower()
+    if mem_type != "workflow":
+        raise ValueError("not a workflow JSON")
+    title = str(data.get("title") or "").strip() or "(untitled workflow)"
+    desc = str(data.get("description") or "").strip() or "(none)"
+    prompts = str(
+        data.get("prompt_templates") or data.get("prompt_template") or data.get("prompts") or ""
+    ).strip() or "(none)"
+    tools_s = str(data.get("tool_configuration") or data.get("tools") or "").strip() or "(none)"
+    out: dict[str, Any] = {
+        "title": title[:255],
+        "description": desc,
+        "prompt_templates": prompts,
+        "tool_configuration": tools_s,
+    }
+    pe = data.get("parent_experiment_id") or data.get("parent_experiment")
+    if pe is not None and str(pe).strip():
+        out["parent_experiment_id"] = str(pe).strip()
+    pi = data.get("parent_ideation_id") or data.get("parent_ideation")
+    if pi is not None and str(pi).strip():
+        out["parent_ideation_id"] = str(pi).strip()
+    return out
 
 
 def post_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
@@ -196,6 +231,9 @@ def upload_memory_record(data: dict[str, Any]) -> dict[str, Any] | None:
     elif mem_type == "experiment":
         body = json_to_experiment_payload(data)
         url = f"{base}/memory/experiment/upload"
+    elif mem_type == "workflow":
+        body = json_to_workflow_payload(data)
+        url = f"{base}/memory/workflow/upload"
     else:
         logger.debug("evomemory_sync: unknown memory_type %r, skip upload", data.get("memory_type"))
         return None
@@ -203,9 +241,13 @@ def upload_memory_record(data: dict[str, Any]) -> dict[str, Any] | None:
     if embed_enabled():
         if mem_type == "ideation":
             text = "\n".join([body["goal"], body["title"], body["core_idea"], body["requirements"]])
-        else:
+        elif mem_type == "experiment":
             text = "\n".join(
                 [body["proposal_context"], body["data_strategy"], body["model_strategy"], body["environment"]]
+            )
+        else:
+            text = "\n".join(
+                [body["title"], body["description"], body["prompt_templates"], body["tool_configuration"]]
             )
         body["embedding"] = embed_text(text)
         body["embedding_model_id"] = embed_model_id()

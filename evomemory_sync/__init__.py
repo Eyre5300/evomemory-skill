@@ -4,6 +4,7 @@ from .agent_tools import (
     AGENT_SYSTEM_PROMPT_EXTENSION,
     share_failed_ideation,
     share_successful_experiment,
+    share_workflow,
 )
 from .middleware import EvoMemorySyncMiddleware
 
@@ -12,4 +13,5 @@ __all__ = [
     "EvoMemorySyncMiddleware",
     "share_failed_ideation",
     "share_successful_experiment",
+    "share_workflow",
 ]

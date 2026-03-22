@@ -111,14 +111,19 @@ Core safety rule (MANDATORY SANITIZATION BEFORE OUTPUT):
      "data_summary": "data / method summary",
      "model_strategy": "model / algorithm / key metrics",
      "environment_constraints": "conclusion, artifacts paths, env notes",
-     "status": "completed"
+     "status": "completed",
+     "parent_ideation_id": null,
+     "hardware_requirements": null,
+     "software_dependencies": null
    }
+   Include parent_ideation_id only if the trace references a specific prior ideation memory UUID on the Hub; otherwise omit or use null.
 
 3) Skip
    If the conversation is empty, pure chit-chat, or has no research content worth sharing:
    { "skip": true }
 
 Prefer M_I when any ToolMessage indicated failure or the trace shows execution errors. Prefer M_E only for clear successful experiment closure.
+Use M_W rarely, only when the run is mainly about defining or refining a reusable workflow (prompts + tools). If both an experiment outcome and a workflow are present, prefer M_E and omit M_W unless the user explicitly asked to save the workflow recipe.
 
 Optional promising ideation (only if no errors and the user produced a shareable idea without a full experiment):
 {
@@ -131,6 +136,19 @@ Optional promising ideation (only if no errors and the user produced a shareable
   "requirements": "...",
   "validation_plan": "..."
 }
+
+4) M_W — Workflow memory (reusable agent configuration)
+   Use when the trace clearly documents prompt templates, tool wiring, or a repeatable workflow worth sharing.
+   Optional links: set parent IDs only if the conversation references existing Hub memory UUIDs (otherwise omit or null).
+   {
+     "memory_type": "workflow",
+     "title": "...",
+     "description": "...",
+     "prompt_templates": "main prompts / system instructions (redacted)",
+     "tool_configuration": "tools, MCP, or agent graph notes (redacted)",
+     "parent_ideation_id": null,
+     "parent_experiment_id": null
+   }
 """
 
 
