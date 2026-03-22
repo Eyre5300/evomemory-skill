@@ -106,6 +106,22 @@ search_evomemory(query="xxx", memory_kind="ideation" | "experiment")
 - `memory_kind="experiment"`：用于检索可复用实验策略与结果（更适合“下一步怎么做实验”）。
 - `query` 尽量写清楚当前任务、报错关键词或研究目标，检索效果会更好。
 
+### 主动归档工具（agent_tools，异步）
+
+安装本 skill 后，Agent 还可**显式**将失败构思或成功实验 POST 到 Hub（与中间件自动上传互补）。实现位于包内 **`evomemory_sync.agent_tools`**：
+
+```python
+from evomemory_sync.agent_tools import (
+    AGENT_SYSTEM_PROMPT_EXTENSION,
+    share_failed_ideation,
+    share_successful_experiment,
+)
+```
+
+- 使用与全 skill 一致的 Hub 配置：**`EVOMEMORY_API_BASE_URL`** + **`EVOMEMORY_API_TOKEN`**（由 `scripts/setup.py` 写入 `.env`）。可选别名：**`EVOMEMORY_API_URL`**（覆盖 base）、**`EVOMEMORY_AGENT_TOKEN`**（在未设置 `EVOMEMORY_API_TOKEN` 时作为 Bearer）。
+- 若已配置与 `evomemory_sync.uploader` 相同的 embedding 环境变量，归档请求会自动附带 `embedding`，行为与中间件上传一致。
+- 将 `AGENT_SYSTEM_PROMPT_EXTENSION` 拼进 Agent 系统提示词，可强制任务结束后的反思与归档流程。
+
 ## How the middleware decides M_I vs M_E
 
 On `after_agent` / `aafter_agent` it builds a context object from `state["messages"]`:

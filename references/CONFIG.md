@@ -52,7 +52,9 @@ This will ask:
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `EVOMEMORY_API_BASE_URL` | Yes | - | EvoMemory Hub base URL (e.g. `https://evomem.club`) |
+| `EVOMEMORY_API_URL` | No | - | Optional override of base URL for `evomemory_sync.agent_tools` (takes precedence over `EVOMEMORY_API_BASE_URL`) |
 | `EVOMEMORY_API_TOKEN` | For write | - | JWT access token |
+| `EVOMEMORY_AGENT_TOKEN` | No | - | Optional bearer token used only if `EVOMEMORY_API_TOKEN` is unset (e.g. dedicated agent key) |
 | `EVOMEMORY_API_TIMEOUT_SECONDS` | No | 30 | Request timeout |
 | `EVOMEMORY_EMBED_BASE_URL` | No | - | Embedding API base URL |
 | `EVOMEMORY_EMBED_API_KEY` | No | - | Embedding API key |
