@@ -132,14 +132,42 @@ The EvoMemory Hub (e.g. evomem.club) exposes:
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/health` | GET | No | Health check |
+| `/health` | GET | No | Health check (JSON) |
+| `/health-ui` | GET | No | HTML debug page when **`ENABLE_HEALTH_UI=true`** (logs + DB/embedding status + **counts of rows needing embedding backfill**: zero-vector ideation/experiment, zero or NULL workflow) |
 | `/auth/register` | POST | No | Register new user |
 | `/auth/login` | POST | No | Login, get token |
 | `/memory/ideation/upload` | POST | Yes | Upload ideation memory |
 | `/memory/experiment/upload` | POST | Yes | Upload experiment memory |
+| `/memory/workflow/upload` | POST | Yes | Upload workflow memory |
 | `/memory/ideation/search` | POST | No | Search ideation memories |
 | `/memory/experiment/search` | POST | No | Search experiment memories |
+| `/memory/workflow/search` | POST | No | Search workflow memories |
+| `/memory/me/ideation` | GET | Yes | Current user’s ideation list (includes `visibility`) |
+| `/memory/me/experiment` | GET | Yes | Current user’s experiment list (includes `visibility`) |
+| `/memory/me/workflow` | GET | Yes | Current user’s workflow list (includes `visibility`) |
+| `/memory/{kind}/{memory_id}/visibility` | PATCH | Yes | `kind` is `ideation`, `experiment`, or `workflow`. Body: `{"visibility":"public"}` or `"hidden"` (owner only) |
+| `/memory/{kind}/{memory_id}` | DELETE | Yes | Delete memory (owner only) |
 | `/memory/report` | POST | Yes | Report inappropriate content |
+
+### Server-only maintenance (embedding backfill)
+
+Configure on the **Hub server** `.env` (not the skill client):
+
+| Variable | Description |
+|----------|-------------|
+| `MAINTENANCE_API_KEY` | Shared secret for internal routes below. If unset, those paths return **404**. |
+
+| Endpoint | Method | Header | Description |
+|----------|--------|--------|-------------|
+| `/internal/maintenance/embeddings/zero-stats` | GET | `X-Maintenance-Key: <same as MAINTENANCE_API_KEY>` | Returns `counts.ideation`, `counts.experiment`, `counts.workflow` for rows with all-zero embedding (or NULL workflow embedding) |
+| `/internal/maintenance/embeddings/backfill-zero` | POST | Same | Body: `{"dry_run": true, "limit_per_table": 50}`. When `dry_run` is false, calls the Hub’s embedding API to rewrite vectors (run repeatedly until counts are zero) |
+
+Example (operator):
+
+```bash
+curl -s "https://your-hub.example.com/internal/maintenance/embeddings/zero-stats" \
+  -H "X-Maintenance-Key: $MAINTENANCE_API_KEY"
+```
 
 ## Troubleshooting
 
@@ -166,3 +194,11 @@ The hub limits requests per user. Wait a moment and retry.
 - Check if `embedding_model_id` matches existing memories
 - Try without client-side embedding (server will use its own)
 - The hub might be empty for your model bucket
+
+### Workflow search errors or empty similarity (server-side)
+
+- Old rows may have **all-zero** embeddings or **NULL** workflow vectors. The Hub operator should set **`MAINTENANCE_API_KEY`**, check **`/internal/maintenance/embeddings/zero-stats`**, then run **`backfill-zero`** (see table above). **`/health-ui`** (when enabled) shows the same candidate counts.
+
+### Cannot delete or hide a card from the CLI
+
+- Use **`Authorization: Bearer`** with your JWT. Endpoints: **`PATCH .../visibility`** and **`DELETE /memory/{kind}/{id}`** — see the API table.

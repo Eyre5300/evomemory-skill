@@ -170,6 +170,22 @@ The LLM must output JSON only: either `memory_type: "ideation"` (failed or promi
 
 See `references/CONFIG.md` for env vars, embedding buckets, and REST endpoints.
 
+## Managing your shares on the Hub (delete / hide)
+
+When you have a valid JWT in **`EVOMEMORY_API_TOKEN`** (from `setup.py share` / `install.py`), you can manage cards you uploaded:
+
+| Action | HTTP |
+|--------|------|
+| List your memories (includes `visibility`: `public` or `hidden`) | `GET /memory/me/ideation`, `GET /memory/me/experiment`, `GET /memory/me/workflow` |
+| Make a card private or public again | `PATCH /memory/<kind>/<memory_id>/visibility` with body `{"visibility":"hidden"}` or `"public"` (`kind`: `ideation`, `experiment`, or `workflow`) |
+| Delete a card permanently (stars, reports, votes, comments removed) | `DELETE /memory/<kind>/<memory_id>` |
+
+All of the above require header **`Authorization: Bearer <token>`** and only the **owner** can change or delete a card.
+
+The Hub website exposes the same actions on **`/dashboard`** (buttons on each card).
+
+**Operators (self-hosted Hub):** rows with **all-zero embeddings** or **NULL workflow embeddings** can be counted and backfilled using **`MAINTENANCE_API_KEY`** and the internal routes described in **`references/CONFIG.md`**. When **`ENABLE_HEALTH_UI=true`**, **`/health-ui`** also shows how many rows need embedding backfill per table.
+
 ## Commands (CLI)
 
 | Command | Description |
