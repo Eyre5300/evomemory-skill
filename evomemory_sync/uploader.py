@@ -29,13 +29,12 @@ def env(name: str, default: str = "") -> str:
 
 
 def get_base_url() -> str:
-    base = env("EVOMEMORY_API_BASE_URL", "http://evomem.club").strip()
+    from .hub_url import DEFAULT_PUBLIC_HUB, canonicalize_hub_base_url
+
+    base = env("EVOMEMORY_API_BASE_URL", DEFAULT_PUBLIC_HUB).strip()
     if not base:
-        base = "http://evomem.club"
-    # Your current hub endpoint appears reachable via HTTP but not HTTPS.
-    if base.startswith("https://"):
-        base = "http://" + base[len("https://") :]
-    return base.rstrip("/")
+        base = DEFAULT_PUBLIC_HUB
+    return canonicalize_hub_base_url(base, default=DEFAULT_PUBLIC_HUB)
 
 
 def hub_headers() -> dict[str, str]:

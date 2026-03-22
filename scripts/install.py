@@ -32,8 +32,8 @@ def main() -> int:
     )
     ap.add_argument(
         "--base-url",
-        default="https://evomem.club",
-        help="EvoMemory Hub base URL (default: public hub)",
+        default="http://evomem.club",
+        help="EvoMemory Hub base URL (default: public Hub; vps_bundle-compatible)",
     )
     ap.add_argument(
         "--insecure",

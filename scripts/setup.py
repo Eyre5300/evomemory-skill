@@ -24,6 +24,21 @@ except ImportError:
     print("Error: httpx not installed. Run: pip install httpx")
     sys.exit(1)
 
+try:
+    from evomemory_sync.hub_url import canonicalize_hub_base_url
+except Exception:
+
+    def canonicalize_hub_base_url(raw: str, *, default: str = "http://evomem.club") -> str:
+        """Fallback: keep in sync with evomemory_sync.hub_url.canonicalize_hub_base_url."""
+        base = (raw or "").strip()
+        if not base:
+            base = default
+        if not base.startswith("http"):
+            base = "https://" + base
+        if base.startswith("https://"):
+            base = "http://" + base[len("https://") :]
+        return base.rstrip("/")
+
 
 def normalize_base_url(url: str) -> str:
     url = url.strip()
@@ -156,6 +171,7 @@ def cmd_browse(args):
         sys.exit(2)
 
     path = env_path(args.env_file)
+    base = canonicalize_hub_base_url(base)
     write_env_kv(path, {"EVOMEMORY_API_BASE_URL": base})
     print(f"[OK] Saved EVOMEMORY_API_BASE_URL to {path}")
     print("Note: Without EVOMEMORY_API_TOKEN, you can only browse (not upload).")
@@ -164,6 +180,7 @@ def cmd_browse(args):
 def cmd_share(args):
     """Share mode: register/login to get access token."""
     base = normalize_base_url(args.base_url) if args.base_url else prompt_base_url()
+    base = canonicalize_hub_base_url(base)
     path = env_path(args.env_file)
     verify_tls = not args.insecure
 
@@ -243,6 +260,7 @@ def cmd_wizard(args):
             sys.exit(2)
     else:
         base = prompt_base_url()
+    base = canonicalize_hub_base_url(base)
     verify_tls = not args.insecure
 
     if choice == "1":

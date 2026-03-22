@@ -71,13 +71,22 @@ def env(name: str, default: str = "") -> str:
 
 
 def get_base_url() -> str:
-    base = env("EVOMEMORY_API_BASE_URL", "https://evomem.club")
-    base = base.strip()
-    if not base:
-        base = "https://evomem.club"
-    if not base.startswith("http"):
-        base = "https://" + base
-    return base.rstrip("/")
+    try:
+        from evomemory_sync.hub_url import DEFAULT_PUBLIC_HUB, canonicalize_hub_base_url
+
+        raw = env("EVOMEMORY_API_BASE_URL", DEFAULT_PUBLIC_HUB)
+        if not raw.strip():
+            raw = DEFAULT_PUBLIC_HUB
+        return canonicalize_hub_base_url(raw, default=DEFAULT_PUBLIC_HUB)
+    except Exception:
+        base = env("EVOMEMORY_API_BASE_URL", "http://evomem.club").strip()
+        if not base:
+            base = "http://evomem.club"
+        if not base.startswith("http"):
+            base = "https://" + base
+        if base.startswith("https://"):
+            base = "http://" + base[len("https://") :]
+        return base.rstrip("/")
 
 
 def get_headers() -> dict[str, str]:
