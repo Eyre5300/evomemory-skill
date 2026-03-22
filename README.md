@@ -8,6 +8,22 @@ This repository ships:
 2. **Scripts** under `scripts/` for Hub login, CLI search, and package upgrade/uninstall.
 3. **Docs**: `SKILL.md` (Cursor/agent skill metadata + integration snippets), `references/CONFIG.md` (full env reference).
 
+### One-command setup (recommended)
+
+After cloning or using **Cursor `/install-skill`**, run **once** from the skill repo root:
+
+```bash
+python install.py
+```
+
+This runs **`pip install -e .`** and then **`scripts/setup.py share`** against the **public Hub** (`https://evomem.club` by default): you enter **email** and **password** → the script registers or logs in → **`EVOMEMORY_API_TOKEN`** is saved to **`.env`**.
+
+- Custom Hub: `python install.py --base-url https://your-hub`
+- TLS issues (HTTPS+IP): add `--insecure`
+- CI / no TTY: set `EVOMEMORY_SETUP_EMAIL` and `EVOMEMORY_SETUP_PASSWORD`, then run `install.py`
+
+See **`SKILL.md`** for the full first-run checklist (including extractor LLM keys for auto-upload).
+
 ---
 
 ## What this skill helps an agent do
@@ -40,27 +56,23 @@ Extractor prompts and JSON schema live in **`evomemory_sync/extractor.py`** (`SY
 
 ## Installation
 
-### 1) Install the Python package (required)
-
-From the **repository root** (so imports resolve):
-
-```bash
-pip install -e .
-```
-
-Use the **same virtualenv** as your agent (e.g. EvoScientist).
-
-Dependencies include LangChain / LangGraph, `httpx`, `requests`, `python-dotenv` — see **`pyproject.toml`**.
+### 1) Recommended: `python install.py` (see top of this README)
 
 ### 2) Optional: install as a Cursor / agent “skill”
-
-Documentation-only install path (example):
 
 ```text
 /install-skill github.com/<org>/evomemory-skill
 ```
 
-The **runtime** still needs `pip install -e .` in that environment.
+That step **does not** run `pip` or create `.env` — run **`python install.py`** once from the cloned skill folder (see above).
+
+### 3) Manual package install only
+
+```bash
+pip install -e .
+```
+
+Use the **same virtualenv** as your agent (e.g. EvoScientist). Dependencies: **`pyproject.toml`**.
 
 ---
 

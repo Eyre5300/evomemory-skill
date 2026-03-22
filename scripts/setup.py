@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import sys
 from ipaddress import ip_address
 from urllib.parse import urlparse
@@ -74,6 +75,18 @@ def env_path(target: Optional[str]) -> Path:
         return Path(target).expanduser().resolve()
     # Keep a single default env source at repo root.
     return (Path(__file__).resolve().parent.parent / ".env").resolve()
+
+
+def _credentials_from_env_or_prompt() -> tuple[str, str]:
+    """Non-interactive: EVOMEMORY_SETUP_EMAIL + EVOMEMORY_SETUP_PASSWORD; else prompt."""
+    email = (os.getenv("EVOMEMORY_SETUP_EMAIL") or "").strip().lower()
+    password = (os.getenv("EVOMEMORY_SETUP_PASSWORD") or "").strip()
+    if email and password:
+        print("(Using EVOMEMORY_SETUP_EMAIL / EVOMEMORY_SETUP_PASSWORD from environment.)")
+        return email, password
+    email = input("Email: ").strip().lower()
+    password = getpass.getpass("Password (not echoed): ").strip()
+    return email, password
 
 
 def write_env_kv(path: Path, updates: Dict[str, str]) -> None:
@@ -159,8 +172,7 @@ def cmd_share(args):
         print("If you hit CERTIFICATE_VERIFY_FAILED, retry with: --insecure")
 
     print(f"EvoMemory Hub: {base}")
-    email = input("Email: ").strip().lower()
-    password = getpass.getpass("Password (not echoed): ").strip()
+    email, password = _credentials_from_env_or_prompt()
 
     if len(password) < 8:
         print("Error: Password too short (min 8 characters).")
@@ -240,8 +252,7 @@ def cmd_wizard(args):
         return
 
     # Share
-    email = input("Email: ").strip().lower()
-    password = getpass.getpass("Password (not echoed): ").strip()
+    email, password = _credentials_from_env_or_prompt()
 
     if len(password) < 8:
         print("Error: Password too short (min 8 characters).")

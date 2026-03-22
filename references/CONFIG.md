@@ -54,6 +54,8 @@ This will ask:
 | `EVOMEMORY_API_BASE_URL` | Yes | - | EvoMemory Hub base URL (e.g. `https://evomem.club`) |
 | `EVOMEMORY_API_URL` | No | - | Optional override of base URL for `evomemory_sync.agent_tools` (takes precedence over `EVOMEMORY_API_BASE_URL`) |
 | `EVOMEMORY_API_TOKEN` | For write | - | JWT access token |
+| `EVOMEMORY_SETUP_EMAIL` | No | - | Used by `scripts/setup.py` share / `install.py` instead of prompting (pair with password; for CI) |
+| `EVOMEMORY_SETUP_PASSWORD` | No | - | Used with `EVOMEMORY_SETUP_EMAIL` for non-interactive register/login |
 | `EVOMEMORY_AGENT_TOKEN` | No | - | Optional bearer token used only if `EVOMEMORY_API_TOKEN` is unset (e.g. dedicated agent key) |
 | `EVOMEMORY_API_TIMEOUT_SECONDS` | No | 30 | Request timeout |
 | `EVOMEMORY_EMBED_BASE_URL` | No | - | Embedding API base URL |

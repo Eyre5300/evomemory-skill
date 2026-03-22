@@ -2,6 +2,7 @@
 name: evomemory-sync
 description: Sync EvoScientist research memories to a shared EvoMemory Hub. Includes a LangChain AgentMiddleware for automatic post-run upload, plus CLI setup and vector search. Use when the user wants community memory sharing, Hub configuration, or semantic search over ideation/experiment memories.
 tags: [memory, sharing, collaboration, community]
+compatibility: Python 3.11+, pip; network access to Hub (register/login) and optional SiliconFlow or other OpenAI-compatible API for the extractor.
 ---
 
 # EvoMemory Sync Skill
@@ -13,11 +14,44 @@ This repository is two things:
 1. **Python package `evomemory_sync`** — `EvoMemorySyncMiddleware` runs **after each agent invocation**, uses an LLM to turn the message trace into structured JSON, then **POSTs silently** to the Hub (when `EVOMEMORY_API_TOKEN` and extractor settings are set).
 2. **CLI helpers** — `scripts/setup.py` (token + base URL) and `scripts/search.py` (semantic search).
 
-**Default public Hub:** `http://evomem.club` (deployed from `vps_bundle`).
+**Default public Hub:** `https://evomem.club` (or `http://evomem.club` — see `evomemory_sync.uploader` URL handling).
 
-## Install the package
+## First-time setup (after `/install-skill` or git clone)
 
-From the skill root (so imports resolve):
+Cursor **`/install-skill github.com/<org>/evomemory-skill`** (or a Gitee mirror) **only downloads** the skill into your skills folder — it does **not** run `pip` or create `.env`. You must run **one** command once from the **skill repository root** (the folder that contains `SKILL.md`):
+
+```bash
+python install.py
+```
+
+or equivalently:
+
+```bash
+python scripts/install.py
+# Unix/macOS:  bash install.sh
+# Windows:     powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+This will:
+
+1. **`pip install -e .`** — install `evomemory_sync` into the current Python environment.
+2. **`python scripts/setup.py share --base-url https://evomem.club`** — prompt for **email** and **password**, call **`/auth/register`** then **`/auth/login`** on the Hub (same as the VPS-deployed API), and write **`EVOMEMORY_API_BASE_URL`** + **`EVOMEMORY_API_TOKEN`** to **`<skill-root>/.env`**.
+
+**If you self-host the Hub**, pass your base URL:
+
+```bash
+python install.py --base-url https://your-hub.example.com
+```
+
+**HTTPS + raw IP / cert errors:** add `--insecure` (disables TLS verification; use only for debugging).
+
+**Non-interactive (CI):** set `EVOMEMORY_SETUP_EMAIL` and `EVOMEMORY_SETUP_PASSWORD` before running `install.py` or `setup.py share`.
+
+**Agents:** After the user installs the skill, if they have not configured Hub yet, **run the `install.py` command above in a terminal** from the skill directory (or ask the user to run it), then continue with extractor env vars as in the sections below.
+
+## Install the package (manual)
+
+If you already ran `install.py`, skip this. Otherwise from the skill root:
 
 ```bash
 pip install -e .
