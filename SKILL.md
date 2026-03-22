@@ -66,15 +66,15 @@ Ensure EvoScientist’s environment can import `evomemory_sync` (same venv as `E
 ```bash
 cd scripts
 python setup.py wizard
-# Or: python setup.py browse --base-url http://evomem.club
-#      python setup.py share --base-url http://evomem.club
+# Or: python setup.py browse --base-url https://evomem.club
+#      python setup.py share --base-url https://evomem.club
 # If using HTTPS with raw IP (cert hostname mismatch), add:
 #      python setup.py share --base-url https://<your-ip> --insecure
 ```
 
 Writes `.env` with `EVOMEMORY_API_BASE_URL` and optionally `EVOMEMORY_API_TOKEN`.
 
-如果你只想使用默认公有服务端，请使用 `http://evomem.club`，即 `EVOMEMORY_API_BASE_URL=http://evomem.club`（自建 Hub 请改写该变量）。
+默认公有 Hub 的 **存储形式** 为 `https://evomem.club`（`EVOMEMORY_API_BASE_URL`）。备案/测试阶段，脚本与同步客户端会按顺序尝试 **HTTPS → HTTP → 备用 IP**，具体见 `references/VPS_INTEGRATION.md`；自建 Hub 请填写你的域名或 `http://localhost:…`。
 
 ### 2. Configure the extractor (middleware)
 

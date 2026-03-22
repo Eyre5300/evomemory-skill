@@ -25,19 +25,55 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from evomemory_sync.hub_url import canonicalize_hub_base_url
+    from evomemory_sync.hub_url import build_hub_candidate_urls, normalize_hub_base_url
 except Exception:
+    from urllib.parse import urlunparse
 
-    def canonicalize_hub_base_url(raw: str, *, default: str = "http://evomem.club") -> str:
-        """Fallback: keep in sync with evomemory_sync.hub_url.canonicalize_hub_base_url."""
+    _SETUP_DEFAULT_HUB = "https://evomem.club"
+    _SETUP_FALLBACK_IP = "8.130.132.246"
+    _SETUP_ENABLE_FALLBACKS = True
+
+    def normalize_hub_base_url(raw: str, *, default: str = _SETUP_DEFAULT_HUB) -> str:
+        """Fallback: keep in sync with evomemory_sync.hub_url.normalize_hub_base_url."""
         base = (raw or "").strip()
         if not base:
             base = default
         if not base.startswith("http"):
             base = "https://" + base
-        if base.startswith("https://"):
-            base = "http://" + base[len("https://") :]
-        return base.rstrip("/")
+        parsed = urlparse(base)
+        host = (parsed.hostname or "").lower()
+        if host in ("localhost", "127.0.0.1", "::1"):
+            scheme = parsed.scheme if parsed.scheme in ("http", "https") else "http"
+        else:
+            scheme = "https"
+        netloc = parsed.netloc
+        path = parsed.path.rstrip("/")
+        return urlunparse((scheme, netloc, path, "", "", "")).rstrip("/")
+
+    def build_hub_candidate_urls(normalized_base: str) -> list[str]:
+        """Fallback: keep in sync with evomemory_sync.hub_url.build_hub_candidate_urls."""
+        parsed = urlparse(normalized_base)
+        host = (parsed.hostname or "").lower()
+        netloc = parsed.netloc
+        suffix = (parsed.path or "").rstrip("/")
+        out: list[str] = []
+        seen: set[str] = set()
+
+        def add_url(scheme: str, nl: str) -> None:
+            path_part = (suffix + "/") if suffix else "/"
+            u = urlunparse((scheme, nl, path_part.rstrip("/") or "/", "", "", "")).rstrip("/")
+            if u not in seen:
+                seen.add(u)
+                out.append(u)
+
+        add_url("https", netloc)
+        add_url("http", netloc)
+        if _SETUP_ENABLE_FALLBACKS and host == "evomem.club":
+            port = parsed.port
+            ip_netloc = f"{_SETUP_FALLBACK_IP}:{port}" if port else _SETUP_FALLBACK_IP
+            add_url("https", ip_netloc)
+            add_url("http", ip_netloc)
+        return out
 
 
 def normalize_base_url(url: str) -> str:
@@ -171,7 +207,7 @@ def cmd_browse(args):
         sys.exit(2)
 
     path = env_path(args.env_file)
-    base = canonicalize_hub_base_url(base)
+    base = normalize_hub_base_url(base)
     write_env_kv(path, {"EVOMEMORY_API_BASE_URL": base})
     print(f"[OK] Saved EVOMEMORY_API_BASE_URL to {path}")
     print("Note: Without EVOMEMORY_API_TOKEN, you can only browse (not upload).")
@@ -180,15 +216,18 @@ def cmd_browse(args):
 def cmd_share(args):
     """Share mode: register/login to get access token."""
     base = normalize_base_url(args.base_url) if args.base_url else prompt_base_url()
-    base = canonicalize_hub_base_url(base)
+    canonical = normalize_hub_base_url(base)
+    candidates = build_hub_candidate_urls(canonical)
     path = env_path(args.env_file)
     verify_tls = not args.insecure
 
-    if _is_ip_https(base):
+    if _is_ip_https(canonical):
         print("Notice: HTTPS + IP address may fail certificate hostname validation.")
         print("If you hit CERTIFICATE_VERIFY_FAILED, retry with: --insecure")
 
-    print(f"EvoMemory Hub: {base}")
+    print(f"EvoMemory Hub (canonical): {canonical}")
+    if len(candidates) > 1:
+        print("Testing fallbacks: try HTTPS → HTTP → fallback IP until auth succeeds.")
     email, password = _credentials_from_env_or_prompt()
 
     if len(password) < 8:
@@ -197,14 +236,7 @@ def cmd_share(args):
 
     token: Optional[str] = None
     last_err: Optional[Exception] = None
-
-    def try_register() -> Optional[str]:
-        data = post_json(base + "/auth/register", {"email": email, "password": password}, verify=verify_tls)
-        return str(data.get("access_token") or "")
-
-    def try_login() -> Optional[str]:
-        data = post_json(base + "/auth/login", {"email": email, "password": password}, verify=verify_tls)
-        return str(data.get("access_token") or "")
+    working: Optional[str] = None
 
     if args.mode == "register":
         try_order = ["register"]
@@ -213,26 +245,42 @@ def cmd_share(args):
     else:
         try_order = ["register", "login"]
 
-    for m in try_order:
-        try:
-            if m == "register":
-                print("Trying to register...")
-                token = try_register()
-            else:
-                print("Trying to login...")
-                token = try_login()
-            if token:
-                break
-        except Exception as e:
-            last_err = e
-            token = None
+    for hub_base in candidates:
+        for m in try_order:
+            try:
+                if m == "register":
+                    print(f"Trying to register via {hub_base} …")
+                    data = post_json(
+                        hub_base + "/auth/register",
+                        {"email": email, "password": password},
+                        verify=verify_tls,
+                    )
+                else:
+                    print(f"Trying to login via {hub_base} …")
+                    data = post_json(
+                        hub_base + "/auth/login",
+                        {"email": email, "password": password},
+                        verify=verify_tls,
+                    )
+                token = str(data.get("access_token") or "")
+                if token:
+                    working = hub_base
+                    break
+            except Exception as e:
+                last_err = e
+                token = None
+        if token:
+            break
 
     if not token:
         print(f"Error: Failed to get access_token. {last_err}")
         sys.exit(1)
 
+    if working and working != canonical:
+        print(f"Note: Authenticated via {working} (saved canonical URL: {canonical}).")
+
     write_env_kv(path, {
-        "EVOMEMORY_API_BASE_URL": base,
+        "EVOMEMORY_API_BASE_URL": canonical,
         "EVOMEMORY_API_TOKEN": token,
     })
     print(f"[OK] Saved EVOMEMORY_API_BASE_URL and EVOMEMORY_API_TOKEN to {path}")
@@ -260,16 +308,19 @@ def cmd_wizard(args):
             sys.exit(2)
     else:
         base = prompt_base_url()
-    base = canonicalize_hub_base_url(base)
+    canonical = normalize_hub_base_url(base)
+    candidates = build_hub_candidate_urls(canonical)
     verify_tls = not args.insecure
 
     if choice == "1":
-        write_env_kv(path, {"EVOMEMORY_API_BASE_URL": base})
+        write_env_kv(path, {"EVOMEMORY_API_BASE_URL": canonical})
         print(f"[OK] Saved EVOMEMORY_API_BASE_URL to {path}")
         print("You can switch to Share later by running: python setup.py share")
         return
 
     # Share
+    if len(candidates) > 1:
+        print("Testing fallbacks: try HTTPS → HTTP → fallback IP until auth succeeds.")
     email, password = _credentials_from_env_or_prompt()
 
     if len(password) < 8:
@@ -278,37 +329,46 @@ def cmd_wizard(args):
 
     token: Optional[str] = None
     last_err: Optional[Exception] = None
+    working: Optional[str] = None
 
-    def try_register() -> Optional[str]:
-        data = post_json(base + "/auth/register", {"email": email, "password": password}, verify=verify_tls)
-        return str(data.get("access_token") or "")
-
-    def try_login() -> Optional[str]:
-        data = post_json(base + "/auth/login", {"email": email, "password": password}, verify=verify_tls)
-        return str(data.get("access_token") or "")
-
-    for m in ["register", "login"]:
-        try:
-            if m == "register":
-                print("Trying to register...")
-                token = try_register()
-            else:
-                print("Trying to login...")
-                token = try_login()
-            if token:
-                break
-        except Exception as e:
-            last_err = e
-            token = None
+    for hub_base in candidates:
+        for m in ["register", "login"]:
+            try:
+                if m == "register":
+                    print(f"Trying to register via {hub_base} …")
+                    data = post_json(
+                        hub_base + "/auth/register",
+                        {"email": email, "password": password},
+                        verify=verify_tls,
+                    )
+                else:
+                    print(f"Trying to login via {hub_base} …")
+                    data = post_json(
+                        hub_base + "/auth/login",
+                        {"email": email, "password": password},
+                        verify=verify_tls,
+                    )
+                token = str(data.get("access_token") or "")
+                if token:
+                    working = hub_base
+                    break
+            except Exception as e:
+                last_err = e
+                token = None
+        if token:
+            break
 
     if not token:
         print(f"Error: Failed to get access_token. {last_err}")
         sys.exit(1)
 
+    if working and working != canonical:
+        print(f"Note: Authenticated via {working} (saved canonical URL: {canonical}).")
+
     write_env_kv(
         path,
         {
-            "EVOMEMORY_API_BASE_URL": base,
+            "EVOMEMORY_API_BASE_URL": canonical,
             "EVOMEMORY_API_TOKEN": token,
         },
     )

@@ -7,7 +7,7 @@ Usage:
     python search.py ideation "..." --top-k 20 --min-similarity 0.35
 
 Env defaults (optional):
-    EVOMEMORY_API_BASE_URL (default: https://evomem.club)
+    EVOMEMORY_API_BASE_URL (canonical default: https://evomem.club; runtime may probe HTTP / IP fallbacks)
     EVOMEMORY_SEARCH_TOP_K, EVOMEMORY_SEARCH_MIN_SIMILARITY
 """
 
@@ -72,21 +72,17 @@ def env(name: str, default: str = "") -> str:
 
 def get_base_url() -> str:
     try:
-        from evomemory_sync.hub_url import DEFAULT_PUBLIC_HUB, canonicalize_hub_base_url
+        from evomemory_sync.hub_url import DEFAULT_PUBLIC_HUB, resolve_working_hub_base_url_cached
 
         raw = env("EVOMEMORY_API_BASE_URL", DEFAULT_PUBLIC_HUB)
         if not raw.strip():
             raw = DEFAULT_PUBLIC_HUB
-        return canonicalize_hub_base_url(raw, default=DEFAULT_PUBLIC_HUB)
+        return resolve_working_hub_base_url_cached(raw, default=DEFAULT_PUBLIC_HUB)
     except Exception:
-        base = env("EVOMEMORY_API_BASE_URL", "http://evomem.club").strip()
-        if not base:
-            base = "http://evomem.club"
-        if not base.startswith("http"):
-            base = "https://" + base
-        if base.startswith("https://"):
-            base = "http://" + base[len("https://") :]
-        return base.rstrip("/")
+        raw = env("EVOMEMORY_API_BASE_URL", "https://evomem.club").strip() or "https://evomem.club"
+        if not raw.startswith("http"):
+            raw = "https://" + raw
+        return raw.rstrip("/")
 
 
 def get_headers() -> dict[str, str]:

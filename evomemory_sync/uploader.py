@@ -29,12 +29,12 @@ def env(name: str, default: str = "") -> str:
 
 
 def get_base_url() -> str:
-    from .hub_url import DEFAULT_PUBLIC_HUB, canonicalize_hub_base_url
+    from .hub_url import DEFAULT_PUBLIC_HUB, resolve_working_hub_base_url_cached
 
     base = env("EVOMEMORY_API_BASE_URL", DEFAULT_PUBLIC_HUB).strip()
     if not base:
         base = DEFAULT_PUBLIC_HUB
-    return canonicalize_hub_base_url(base, default=DEFAULT_PUBLIC_HUB)
+    return resolve_working_hub_base_url_cached(base, default=DEFAULT_PUBLIC_HUB)
 
 
 def hub_headers() -> dict[str, str]:

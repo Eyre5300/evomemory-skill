@@ -1,29 +1,183 @@
 """
-Canonical Hub base URL for evomemory_sync clients.
+Hub base URL normalization and testing-phase connectivity fallbacks.
 
-Must stay aligned with what the EvoMemory Hub (vps_bundle) actually serves. The public deployment
-historically exposed HTTP more reliably than HTTPS for the same host; callers therefore normalize
-https:// → http:// for the default public Hub pattern (see uploader.get_base_url).
+Stored form (``EVOMEMORY_API_BASE_URL``) is always the **canonical HTTPS** URL for the
+configured host (except ``localhost`` / loopback, where the caller's scheme is kept).
+
+When ``ENABLE_HUB_URL_TESTING_FALLBACKS`` is True (备案 / 测试阶段), runtime clients may
+resolve a **working** origin by probing in order:
+
+1. ``https://<host>`` (same port/path as configured)
+2. ``http://<host>``
+3. ``https://<fallback-ip>`` then ``http://<fallback-ip>`` (only for public Hub host
+   ``evomem.club`` by default — see ``_should_use_ip_fallback``)
+
+**Remove** ``ENABLE_HUB_URL_TESTING_FALLBACKS`` (set to False) and delete IP / multi-step
+logic after public launch, per product decision.
 """
 
 from __future__ import annotations
 
-DEFAULT_PUBLIC_HUB = "http://evomem.club"
+import logging
+import os
+from urllib.parse import urlparse, urlunparse
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Testing / 备案阶段：上线后改为 False 并删去 IP 降级等相关分支
+# ---------------------------------------------------------------------------
+ENABLE_HUB_URL_TESTING_FALLBACKS = True
+
+DEFAULT_PUBLIC_HUB = "https://evomem.club"
+TESTING_FALLBACK_IP = "8.130.132.246"
 
 
-def canonicalize_hub_base_url(raw: str, *, default: str = DEFAULT_PUBLIC_HUB) -> str:
+def _env_float(name: str, default: float) -> float:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def normalize_hub_base_url(raw: str, *, default: str = DEFAULT_PUBLIC_HUB) -> str:
     """
-    Normalize a Hub base URL for REST calls from this skill.
+    Canonical Hub base URL for storage and display: prefer HTTPS, no trailing slash.
 
-    - Empty → default (public Hub).
-    - No scheme → prefix https:// then apply rule below (same as setup.py normalize).
-    - https:// → http:// (matches legacy uploader behavior so uploads/search use one scheme).
+    ``localhost`` / loopback keeps ``http`` if that was implied, for local dev.
     """
     base = (raw or "").strip()
     if not base:
         base = default
     if not base.startswith("http"):
         base = "https://" + base
-    if base.startswith("https://"):
-        base = "http://" + base[len("https://") :]
-    return base.rstrip("/")
+    parsed = urlparse(base)
+    host = (parsed.hostname or "").lower()
+
+    if host in ("localhost", "127.0.0.1", "::1"):
+        scheme = parsed.scheme if parsed.scheme in ("http", "https") else "http"
+    else:
+        scheme = "https"
+
+    netloc = parsed.netloc
+    path = parsed.path.rstrip("/")
+    out = urlunparse((scheme, netloc, path, "", "", "")).rstrip("/")
+    return out
+
+
+def canonicalize_hub_base_url(raw: str, *, default: str = DEFAULT_PUBLIC_HUB) -> str:
+    """Deprecated alias for :func:`normalize_hub_base_url`."""
+    return normalize_hub_base_url(raw, default=default)
+
+
+def _should_use_ip_fallback(hostname: str) -> bool:
+    if not ENABLE_HUB_URL_TESTING_FALLBACKS:
+        return False
+    h = (hostname or "").lower().strip()
+    if not h or h == TESTING_FALLBACK_IP.lower():
+        return False
+    if h == "evomem.club":
+        return True
+    return os.getenv("EVOMEMORY_HUB_IP_FALLBACK", "").strip() in ("1", "true", "yes")
+
+
+def build_hub_candidate_urls(normalized_base: str) -> list[str]:
+    """
+    Ordered URLs to try for the same logical Hub (HTTPS first, then HTTP, then IP fallbacks).
+    ``normalized_base`` should be the output of :func:`normalize_hub_base_url`.
+    """
+    parsed = urlparse(normalized_base)
+    host = (parsed.hostname or "").lower()
+    netloc = parsed.netloc
+    suffix = (parsed.path or "").rstrip("/")
+
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add_url(scheme: str, nl: str) -> None:
+        path_part = (suffix + "/") if suffix else "/"
+        u = urlunparse((scheme, nl, path_part.rstrip("/") or "/", "", "", "")).rstrip("/")
+        if u not in seen:
+            seen.add(u)
+            out.append(u)
+
+    add_url("https", netloc)
+    add_url("http", netloc)
+
+    if _should_use_ip_fallback(host):
+        ip = (os.getenv("EVOMEMORY_HUB_FALLBACK_IP") or TESTING_FALLBACK_IP).strip()
+        port = parsed.port
+        ip_netloc = f"{ip}:{port}" if port else ip
+        add_url("https", ip_netloc)
+        add_url("http", ip_netloc)
+
+    return out
+
+
+def _probe_reachable(url: str, *, timeout: float, verify: bool) -> bool:
+    root = url.rstrip("/") + "/"
+    try:
+        r = requests.head(root, timeout=timeout, allow_redirects=True, verify=verify)
+        return r.status_code < 600
+    except requests.exceptions.SSLError:
+        return False
+    except requests.exceptions.RequestException:
+        pass
+    try:
+        r = requests.get(root, timeout=timeout, allow_redirects=True, verify=verify)
+        return r.status_code < 600
+    except requests.exceptions.RequestException:
+        return False
+
+
+def resolve_working_hub_base_url(
+    raw: str,
+    *,
+    default: str = DEFAULT_PUBLIC_HUB,
+    verify: bool = False,
+) -> str:
+    """
+    Return a base URL that responds to HTTP probing, or the canonical HTTPS URL if none respond.
+
+    When testing fallbacks are disabled, returns :func:`normalize_hub_base_url` only.
+    """
+    normalized = normalize_hub_base_url(raw, default=default)
+    if not ENABLE_HUB_URL_TESTING_FALLBACKS:
+        return normalized
+
+    timeout = _env_float("EVOMEMORY_HUB_PROBE_TIMEOUT_SECONDS", 5.0)
+    candidates = build_hub_candidate_urls(normalized)
+    for cand in candidates:
+        if _probe_reachable(cand, timeout=timeout, verify=verify):
+            if cand != normalized:
+                logger.info("Hub reachable via fallback origin %s (configured %s)", cand, normalized)
+            return cand
+
+    logger.warning(
+        "Hub probe failed for all candidates; using canonical URL %s (last resort)",
+        normalized,
+    )
+    return normalized
+
+
+# Process-local cache: canonical configured URL -> resolved origin
+_resolved_cache: dict[str, str] = {}
+
+
+def resolve_working_hub_base_url_cached(
+    raw: str,
+    *,
+    default: str = DEFAULT_PUBLIC_HUB,
+    verify: bool = False,
+) -> str:
+    key = normalize_hub_base_url(raw, default=default)
+    if key in _resolved_cache:
+        return _resolved_cache[key]
+    resolved = resolve_working_hub_base_url(key, default=default, verify=verify)
+    _resolved_cache[key] = resolved
+    return resolved
