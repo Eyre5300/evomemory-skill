@@ -15,6 +15,7 @@ from .uploader import (
     DEFAULT_ACCEPT,
     DEFAULT_ACCEPT_LANGUAGE,
     get_base_url,
+    tls_verify,
 )
 
 
@@ -165,7 +166,7 @@ def search_evomemory(query: str, memory_kind: str) -> str:
             "min_similarity": _default_min_similarity(),
             "query_text": q,
         }
-        r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=False)
+        r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=tls_verify())
         if r.status_code >= 400:
             try:
                 detail = r.json()

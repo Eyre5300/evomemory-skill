@@ -35,6 +35,7 @@ from .uploader import (
     embed_text,
     env,
     get_base_url,
+    tls_verify,
 )
 
 try:
@@ -140,7 +141,7 @@ async def share_failed_ideation(
     }
     payload = await _maybe_add_ideation_embedding(payload)
     base = _base_url()
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=False) as client:
+    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
         response = await client.post(
             f"{base}/memory/ideation/upload",
             json=payload,
@@ -175,7 +176,7 @@ async def share_successful_experiment(
     )
     payload = await _maybe_add_experiment_embedding(payload)
     base = _base_url()
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=False) as client:
+    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
         response = await client.post(
             f"{base}/memory/experiment/upload",
             json=payload,
@@ -206,7 +207,7 @@ async def share_workflow(
     )
     payload = await _maybe_add_workflow_embedding(payload)
     base = _base_url()
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=False) as client:
+    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
         response = await client.post(
             f"{base}/memory/workflow/upload",
             json=payload,
@@ -228,7 +229,7 @@ async def patch_experiment_parent_link(
     if parent_ideation_id is _UNSET:
         raise ValueError("parent_ideation_id is required (use None to clear the link)")
     base = _base_url()
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=False) as client:
+    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
         response = await client.patch(
             f"{base}/memory/experiment/{memory_id}/parent",
             json={"parent_ideation_id": parent_ideation_id},
@@ -256,7 +257,7 @@ async def patch_workflow_parent_links(
     if not body:
         raise ValueError("pass at least one of parent_ideation_id or parent_experiment_id")
     base = _base_url()
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=False) as client:
+    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
         response = await client.patch(
             f"{base}/memory/workflow/{memory_id}/parents",
             json=body,

@@ -28,6 +28,18 @@ def env(name: str, default: str = "") -> str:
     return v.strip() if isinstance(v, str) and v.strip() else default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def tls_verify() -> bool:
+    """Default secure TLS verification; opt-out only for debugging."""
+    return not _env_bool("EVOMEMORY_INSECURE", False)
+
+
 def get_base_url() -> str:
     from .hub_url import DEFAULT_PUBLIC_HUB, resolve_working_hub_base_url_cached
 
@@ -72,7 +84,7 @@ def embed_text(text: str) -> list[float]:
         "Accept-Language": DEFAULT_ACCEPT_LANGUAGE,
     }
     timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "120") or "120")
-    r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=False)
+    r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=tls_verify())
     r.raise_for_status()
     data = r.json()
     vec = data["data"][0]["embedding"]
@@ -197,7 +209,7 @@ def post_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dic
 
     for attempt in range(max_retries):
         try:
-            r = requests.post(url, json=payload, headers=req_headers, timeout=timeout, verify=False)
+            r = requests.post(url, json=payload, headers=req_headers, timeout=timeout, verify=tls_verify())
             if 200 <= r.status_code < 300:
                 return r.json()
             try:

@@ -11,6 +11,8 @@ from typing import Any
 import requests
 import urllib3
 
+from .uploader import tls_verify
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
@@ -186,7 +188,7 @@ def _call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:
         }
         if use_json_format:
             payload["response_format"] = {"type": "json_object"}
-        r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=False)
+        r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=tls_verify())
         r.raise_for_status()
         data = r.json()
         choice = data["choices"][0]["message"]
