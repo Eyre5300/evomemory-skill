@@ -103,6 +103,12 @@ async def download_workflow(memory_id: str) -> EvoWorkflow:
 
 class WorkflowRunner:
     """基于 LangGraph 的动态工作流执行器。"""
+    _SUPPORTED_PROVIDERS = {
+        "openai",
+        "custom-openai",
+        "anthropic",
+        "custom-anthropic",
+    }
 
     def __init__(self, workflow: EvoWorkflow, tool_registry: dict[str, Callable[..., Any]]):
         self.workflow = workflow
@@ -141,6 +147,20 @@ class WorkflowRunner:
             return "anthropic"
         return "openai"
 
+    @staticmethod
+    def _require_env(var_name: str, *, reason: str) -> str:
+        value = env(var_name, "").strip()
+        if not value:
+            raise RuntimeError(f"缺少环境变量 {var_name}（{reason}）。")
+        return value
+
+    def _validate_provider(self, provider: str) -> None:
+        if provider not in self._SUPPORTED_PROVIDERS:
+            allowed = ", ".join(sorted(self._SUPPORTED_PROVIDERS))
+            raise ValueError(
+                f"不支持的 llm_provider: {provider!r}。仅支持: {allowed}。"
+            )
+
     def _build_chat_model(self) -> Any:
         """
         多模型工厂：
@@ -149,6 +169,7 @@ class WorkflowRunner:
         """
         model_name = self.workflow.llm_config.model_name
         provider = self._infer_provider(model_name)
+        self._validate_provider(provider)
         common_kwargs: dict[str, Any] = {
             "model": model_name,
             "temperature": self.workflow.llm_config.temperature,
@@ -164,23 +185,47 @@ class WorkflowRunner:
                     "当前 workflow 需要 Anthropic 模型，请安装 langchain-anthropic。"
                 ) from e
 
-            base_url = env("CUSTOM_ANTHROPIC_BASE_URL") if provider == "custom-anthropic" else env("ANTHROPIC_BASE_URL")
-            api_key = env("CUSTOM_ANTHROPIC_API_KEY") if provider == "custom-anthropic" else env("ANTHROPIC_API_KEY")
+            if provider == "custom-anthropic":
+                base_url = self._require_env(
+                    "CUSTOM_ANTHROPIC_BASE_URL",
+                    reason="custom-anthropic 需要 Anthropic 兼容端点地址",
+                )
+                api_key = self._require_env(
+                    "CUSTOM_ANTHROPIC_API_KEY",
+                    reason="custom-anthropic 需要 API Key",
+                )
+            else:
+                base_url = env("ANTHROPIC_BASE_URL")
+                api_key = self._require_env(
+                    "ANTHROPIC_API_KEY",
+                    reason="anthropic provider 需要 API Key",
+                )
             kwargs = dict(common_kwargs)
             if base_url:
                 kwargs["base_url"] = base_url
-            if api_key:
-                kwargs["api_key"] = api_key
+            kwargs["api_key"] = api_key
             return ChatAnthropic(**kwargs)
 
         # default: OpenAI + OpenAI-compatible
-        base_url = env("CUSTOM_OPENAI_BASE_URL") if provider == "custom-openai" else env("OPENAI_BASE_URL")
-        api_key = env("CUSTOM_OPENAI_API_KEY") if provider == "custom-openai" else env("OPENAI_API_KEY")
+        if provider == "custom-openai":
+            base_url = self._require_env(
+                "CUSTOM_OPENAI_BASE_URL",
+                reason="custom-openai 需要 OpenAI 兼容端点地址",
+            )
+            api_key = self._require_env(
+                "CUSTOM_OPENAI_API_KEY",
+                reason="custom-openai 需要 API Key",
+            )
+        else:
+            base_url = env("OPENAI_BASE_URL")
+            api_key = self._require_env(
+                "OPENAI_API_KEY",
+                reason="openai provider 需要 API Key",
+            )
         kwargs = dict(common_kwargs)
         if base_url:
             kwargs["base_url"] = base_url
-        if api_key:
-            kwargs["api_key"] = api_key
+        kwargs["api_key"] = api_key
         return ChatOpenAI(**kwargs)
 
     def run(self, input_variables: Optional[dict[str, Any]] = None) -> str:
