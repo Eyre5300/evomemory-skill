@@ -75,6 +75,12 @@ async def download_workflow(memory_id: str) -> EvoWorkflow:
     )
     prompts.setdefault("system", "")
     prompts.setdefault("user_template", "{input}")
+    # 与 EvoWorkflow 校验对齐：旧版 Hub 可能仅存纯文本或非标准 JSON，补全非空键
+    prompts_str = {k: str(v) for k, v in prompts.items()}
+    if not prompts_str.get("system", "").strip():
+        prompts_str["system"] = "You are a helpful assistant."
+    if not prompts_str.get("user_template", "").strip():
+        prompts_str["user_template"] = "{input}"
 
     tool_config = _parse_json_dict(data.get("tool_configuration"), {})
     llm_cfg = tool_config.get("llm_config") if isinstance(tool_config.get("llm_config"), dict) else {}
@@ -87,7 +93,7 @@ async def download_workflow(memory_id: str) -> EvoWorkflow:
         version=version,
         title=str(data.get("title") or "Downloaded Workflow"),
         description=str(data.get("description") or ""),
-        prompts={k: str(v) for k, v in prompts.items()},
+        prompts=prompts_str,
         llm_config=LLMConfig(**llm_cfg),
         environment=WorkflowEnvironment(**env_cfg),
         tools=[str(t) for t in tools],
