@@ -120,14 +120,73 @@ class WorkflowRunner:
             loaded.append(fn)
         return loaded
 
+    def _infer_provider(self, model_name: str) -> str:
+        """
+        推断模型提供商。
+
+        优先级：
+        1) metadata.llm_provider
+        2) 环境变量 EVOMEMORY_LLM_PROVIDER
+        3) 按模型名前缀推断
+        """
+        md_provider = str(self.workflow.metadata.get("llm_provider", "")).strip().lower()
+        if md_provider:
+            return md_provider
+        env_provider = env("EVOMEMORY_LLM_PROVIDER", "").strip().lower()
+        if env_provider:
+            return env_provider
+
+        name = (model_name or "").strip().lower()
+        if name.startswith(("claude", "anthropic/")):
+            return "anthropic"
+        return "openai"
+
+    def _build_chat_model(self) -> Any:
+        """
+        多模型工厂：
+        - openai / custom-openai：ChatOpenAI（支持 OPENAI_BASE_URL / CUSTOM_OPENAI_BASE_URL）
+        - anthropic / custom-anthropic：ChatAnthropic（支持 ANTHROPIC_BASE_URL / CUSTOM_ANTHROPIC_BASE_URL）
+        """
+        model_name = self.workflow.llm_config.model_name
+        provider = self._infer_provider(model_name)
+        common_kwargs: dict[str, Any] = {
+            "model": model_name,
+            "temperature": self.workflow.llm_config.temperature,
+        }
+        if self.workflow.llm_config.max_tokens is not None:
+            common_kwargs["max_tokens"] = self.workflow.llm_config.max_tokens
+
+        if provider in {"anthropic", "custom-anthropic"}:
+            try:
+                from langchain_anthropic import ChatAnthropic
+            except Exception as e:
+                raise RuntimeError(
+                    "当前 workflow 需要 Anthropic 模型，请安装 langchain-anthropic。"
+                ) from e
+
+            base_url = env("CUSTOM_ANTHROPIC_BASE_URL") if provider == "custom-anthropic" else env("ANTHROPIC_BASE_URL")
+            api_key = env("CUSTOM_ANTHROPIC_API_KEY") if provider == "custom-anthropic" else env("ANTHROPIC_API_KEY")
+            kwargs = dict(common_kwargs)
+            if base_url:
+                kwargs["base_url"] = base_url
+            if api_key:
+                kwargs["api_key"] = api_key
+            return ChatAnthropic(**kwargs)
+
+        # default: OpenAI + OpenAI-compatible
+        base_url = env("CUSTOM_OPENAI_BASE_URL") if provider == "custom-openai" else env("OPENAI_BASE_URL")
+        api_key = env("CUSTOM_OPENAI_API_KEY") if provider == "custom-openai" else env("OPENAI_API_KEY")
+        kwargs = dict(common_kwargs)
+        if base_url:
+            kwargs["base_url"] = base_url
+        if api_key:
+            kwargs["api_key"] = api_key
+        return ChatOpenAI(**kwargs)
+
     def run(self, input_variables: Optional[dict[str, Any]] = None) -> str:
         """组装并运行 LangGraph ReAct 执行图。"""
         vars_safe = input_variables or {}
-        llm = ChatOpenAI(
-            model=self.workflow.llm_config.model_name,
-            temperature=self.workflow.llm_config.temperature,
-            max_tokens=self.workflow.llm_config.max_tokens,
-        )
+        llm = self._build_chat_model()
 
         system_prompt = self.workflow.prompts.get("system", "")
         user_template = self.workflow.prompts.get("user_template", "{input}")
