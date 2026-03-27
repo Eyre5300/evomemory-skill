@@ -9,6 +9,9 @@ from collections.abc import Callable
 from typing import Any, Optional
 
 import httpx
+from langchain_core.tools import BaseTool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
 
 from .agent_tools import _base_url
 from .uploader import (
@@ -93,65 +96,53 @@ async def download_workflow(memory_id: str) -> EvoWorkflow:
 
 
 class WorkflowRunner:
-    """
-    通用工作流执行器底座。
-
-    你可以在子类中实现 ``_execute``，将标准化 workflow 对接 LangChain、AutoGen 或其他框架。
-    """
+    """基于 LangGraph 的动态工作流执行器。"""
 
     def __init__(self, workflow: EvoWorkflow, tool_registry: dict[str, Callable[..., Any]]):
         self.workflow = workflow
         self.tool_registry = tool_registry
         self.loaded_tools = self._load_tools()
 
-    def _load_tools(self) -> list[Callable[..., Any]]:
-        """根据 workflow.tools 从本地注册表加载 Python 工具函数。"""
-        loaded: list[Callable[..., Any]] = []
+    def _load_tools(self) -> list[BaseTool | Callable[..., Any]]:
+        """加载工具。注册表中的工具建议是 BaseTool 或 @tool 装饰函数。"""
+        loaded: list[BaseTool | Callable[..., Any]] = []
         for tool_name in self.workflow.tools:
             fn = self.tool_registry.get(tool_name)
             if fn is None:
-                print(
-                    f"Warning: Tool '{tool_name}' required by workflow "
-                    "is not registered locally."
-                )
+                print(f"[警告] 工作流需要的工具 '{tool_name}' 在本地注册表中未找到。")
                 continue
             loaded.append(fn)
         return loaded
 
-    def _build_prompts(self, input_variables: dict[str, Any]) -> tuple[str, str]:
-        system_prompt = self.workflow.prompts.get("system", "")
-        template = self.workflow.prompts.get("user_template", "")
-        try:
-            user_prompt = template.format(**input_variables)
-        except Exception:
-            # 避免模板占位符缺失导致整个执行崩溃，退化为原模板
-            user_prompt = template
-        return system_prompt, user_prompt
-
-    def _execute(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        loaded_tools: list[Callable[..., Any]],
-    ) -> str:
-        """
-        框架无关的占位执行入口。建议在子类中覆盖该方法。
-        """
-        return (
-            "Workflow execution is framework-specific. "
-            "Subclass WorkflowRunner and implement _execute()."
+    def run(self, input_variables: Optional[dict[str, Any]] = None) -> str:
+        """组装并运行 LangGraph ReAct 执行图。"""
+        vars_safe = input_variables or {}
+        llm = ChatOpenAI(
+            model=self.workflow.llm_config.model_name,
+            temperature=self.workflow.llm_config.temperature,
+            max_tokens=self.workflow.llm_config.max_tokens,
         )
 
-    def run(self, input_variables: Optional[dict[str, Any]] = None) -> str:
-        """
-        组装 prompt + tools 并调用底层执行逻辑。
-        """
-        vars_safe = input_variables or {}
-        system_prompt, user_prompt = self._build_prompts(vars_safe)
+        system_prompt = self.workflow.prompts.get("system", "")
+        user_template = self.workflow.prompts.get("user_template", "{input}")
+        try:
+            user_input = user_template.format(**vars_safe)
+        except KeyError as e:
+            raise ValueError(f"缺少填充用户提示词所需的变量: {e}") from e
 
         print(f"--- 正在执行工作流: {self.workflow.title} ---")
-        print(f"使用模型: {self.workflow.llm_config.model_name}")
-        print(f"加载工具: {[t.__name__ for t in self.loaded_tools]}")
+        print(
+            f"模型: {self.workflow.llm_config.model_name} | 工具: "
+            f"{[getattr(t, 'name', getattr(t, '__name__', str(t))) for t in self.loaded_tools]}"
+        )
         print("---------------------------------------")
 
-        return self._execute(system_prompt, user_prompt, self.loaded_tools)
+        agent_executor = create_react_agent(
+            llm,
+            self.loaded_tools,
+            state_modifier=system_prompt,
+        )
+        result_state = agent_executor.invoke({"messages": [("user", user_input)]})
+        final_message = result_state["messages"][-1].content
+        print("--- 执行结束 ---")
+        return str(final_message)
