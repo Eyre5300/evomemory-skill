@@ -59,6 +59,9 @@ This will ask:
 | `EVOMEMORY_AGENT_TOKEN` | No | - | Optional bearer token used only if `EVOMEMORY_API_TOKEN` is unset (e.g. dedicated agent key) |
 | `EVOMEMORY_API_TIMEOUT_SECONDS` | No | 30 | Request timeout |
 | `EVOMEMORY_UPLOAD_MAX_BODY_BYTES` | No | `524288` | Max JSON upload body size (bytes) for `post_json`; raise if exceeded |
+| `EVOMEMORY_UPLOAD_DEDUP_ENABLED` | No | `true` | If `true`, skip LLM+upload when the same extraction context was successfully uploaded recently (see dedup window) |
+| `EVOMEMORY_UPLOAD_DEDUP_WINDOW_SECONDS` | No | `86400` | Dedup window (seconds); default 24h |
+| `EVOMEMORY_UPLOAD_DEDUP_STATE_FILE` | No | `$HOME/.evomemory/upload_dedup.json` | JSON store of recent context fingerprints |
 | `EVOMEMORY_SEARCH_TOP_K` | No | 10 | Default for `scripts/search.py` `--top-k` (1–100) |
 | `EVOMEMORY_SEARCH_MIN_SIMILARITY` | No | 0 | Default for `scripts/search.py` `--min-similarity` (0–1) |
 | `EVOMEMORY_SYNC_ENABLED` | No | `true` | Set `0`/`false` to disable `EvoMemorySyncMiddleware` |

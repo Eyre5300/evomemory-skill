@@ -73,12 +73,9 @@ def env(name: str, default: str = "") -> str:
 
 def get_base_url() -> str:
     try:
-        from evomemory_sync.hub_url import DEFAULT_PUBLIC_HUB, resolve_working_hub_base_url_cached
+        from evomemory_sync.hub_url import get_base_url as _gbu
 
-        raw = env("EVOMEMORY_API_BASE_URL", DEFAULT_PUBLIC_HUB)
-        if not raw.strip():
-            raw = DEFAULT_PUBLIC_HUB
-        return resolve_working_hub_base_url_cached(raw, default=DEFAULT_PUBLIC_HUB)
+        return _gbu()
     except Exception:
         raw = env("EVOMEMORY_API_BASE_URL", "https://evomem.club").strip() or "https://evomem.club"
         if not raw.startswith("http"):

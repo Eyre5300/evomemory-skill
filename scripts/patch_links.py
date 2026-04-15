@@ -70,7 +70,7 @@ def _token() -> str:
 
 def _base() -> str:
     try:
-        from evomemory_sync.uploader import get_base_url
+        from evomemory_sync.hub_url import get_base_url
 
         return get_base_url()
     except Exception:

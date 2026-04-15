@@ -13,6 +13,7 @@ import hashlib
 from .env_loader import load_env
 
 from .extractor import _call_llm_to_extract_json
+from .upload_dedup import fingerprint_context, mark_upload_succeeded, should_skip_duplicate
 from .uploader import upload_memory_record
 
 logger = logging.getLogger("evomemory_sync.worker")
@@ -55,6 +56,15 @@ def main() -> int:
         if not isinstance(ctx, dict):
             return 1
 
+        fp = fingerprint_context(ctx)
+        if should_skip_duplicate(fp):
+            logger.info(
+                "offline worker dedup_skip tmp=%s fp=%s… (same context uploaded recently)",
+                temp_file_path.name,
+                fp[:16],
+            )
+            return 0
+
         record = _call_llm_to_extract_json(ctx)
         if not record or not isinstance(record, dict):
             return 0
@@ -65,6 +75,7 @@ def main() -> int:
         mem_type = str(record.get("memory_type") or record.get("memory_kind") or record.get("type") or "")
         logger.info("offline worker upload ctx_hash=%s memory_type=%s", ctx_hash, mem_type)
         upload_memory_record(record)
+        mark_upload_succeeded(fp)
         logger.info("offline worker done ctx_hash=%s", ctx_hash)
         return 0
     except Exception:

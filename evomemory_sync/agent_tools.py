@@ -29,7 +29,8 @@ import httpx
 
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
 from .env_loader import load_env
-from .uploader import env, get_base_url, tls_verify
+from .hub_url import get_base_url
+from .uploader import env, tls_verify
 
 try:
     load_env()

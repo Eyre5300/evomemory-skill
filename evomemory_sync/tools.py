@@ -11,7 +11,8 @@ from langchain_core.tools import tool
 
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
 from .env_loader import load_env
-from .uploader import get_base_url, tls_verify
+from .hub_url import get_base_url
+from .uploader import tls_verify
 
 
 def _env(name: str, default: str = "") -> str:

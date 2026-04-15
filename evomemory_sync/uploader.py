@@ -9,11 +9,13 @@ import time
 from typing import Any
 
 import requests
+import requests.exceptions
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
+from .hub_url import get_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +43,6 @@ def _max_upload_body_bytes() -> int:
         return max(4096, int(raw))
     except ValueError:
         return 524288
-
-
-def get_base_url() -> str:
-    from .hub_url import DEFAULT_PUBLIC_HUB, resolve_working_hub_base_url_cached
-
-    base = env("EVOMEMORY_API_BASE_URL", DEFAULT_PUBLIC_HUB).strip()
-    if not base:
-        base = DEFAULT_PUBLIC_HUB
-    return resolve_working_hub_base_url_cached(base, default=DEFAULT_PUBLIC_HUB)
 
 
 def hub_headers() -> dict[str, str]:
@@ -189,25 +182,38 @@ def post_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dic
             f"(set EVOMEMORY_UPLOAD_MAX_BODY_BYTES to raise; default 524288)."
         )
 
+    transient_net = (
+        requests.exceptions.Timeout,
+        requests.exceptions.ConnectionError,
+        requests.exceptions.ChunkedEncodingError,
+    )
+
     for attempt in range(max_retries):
         try:
             r = requests.post(url, data=raw_body, headers=req_headers, timeout=timeout, verify=tls_verify())
-            if 200 <= r.status_code < 300:
-                return r.json()
-            try:
-                detail = r.json()
-            except Exception:
-                detail = r.text
-            raise RuntimeError(f"HTTP {r.status_code}: {detail}")
-        except Exception as e:
+        except transient_net as e:
             last_exc = e
             if attempt < max_retries - 1:
                 time.sleep(2**attempt)
                 continue
             raise
-    if last_exc:
-        raise last_exc
-    raise RuntimeError("post_json failed")
+
+        if 200 <= r.status_code < 300:
+            return r.json()
+
+        try:
+            detail = r.json()
+        except Exception:
+            detail = r.text
+        err = RuntimeError(f"HTTP {r.status_code}: {detail}")
+
+        if 500 <= r.status_code < 600:
+            last_exc = err
+            if attempt < max_retries - 1:
+                time.sleep(2**attempt)
+                continue
+            raise last_exc
+        raise err
 
 
 def upload_memory_record(data: dict[str, Any]) -> dict[str, Any] | None:

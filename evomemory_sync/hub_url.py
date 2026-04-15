@@ -177,3 +177,17 @@ def resolve_working_hub_base_url_cached(
     resolved = resolve_working_hub_base_url(key, default=default, verify=verify)
     _resolved_cache[key] = resolved
     return resolved
+
+
+def _env_hub(name: str, default: str = "") -> str:
+    """Read env without importing ``uploader`` (avoids circular import with ``get_base_url``)."""
+    v = os.getenv(name)
+    return v.strip() if isinstance(v, str) and v.strip() else default
+
+
+def get_base_url() -> str:
+    """Resolve Hub base URL from ``EVOMEMORY_API_BASE_URL`` (same contract as legacy ``uploader.get_base_url``)."""
+    base = _env_hub("EVOMEMORY_API_BASE_URL", DEFAULT_PUBLIC_HUB).strip()
+    if not base:
+        base = DEFAULT_PUBLIC_HUB
+    return resolve_working_hub_base_url_cached(base, default=DEFAULT_PUBLIC_HUB)
