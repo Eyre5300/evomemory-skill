@@ -49,11 +49,22 @@ def _tls_verify() -> bool:
 
 
 def _parse_json_object(text: str) -> dict[str, Any]:
+    """Parse model output: optional markdown fence, then a single JSON object."""
     text = text.strip()
-    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
-    if fence:
-        text = fence.group(1).strip()
-    return json.loads(text)
+    m = re.search(r"```(?:json)?\s*\n?", text, re.IGNORECASE)
+    if m:
+        inner_start = m.end()
+        inner_end = text.rfind("```")
+        if inner_end > inner_start:
+            text = text[inner_start:inner_end].strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end > start:
+            return json.loads(text[start : end + 1])
+        raise
 
 
 def _call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:

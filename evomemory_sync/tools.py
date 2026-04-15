@@ -190,7 +190,10 @@ def search_evomemory(query: str, memory_kind: str) -> str:
                 detail = r.json()
             except Exception:
                 detail = r.text
-            return f"检索失败：Hub 返回 HTTP {r.status_code}。详细信息：{detail}"
+            detail_s = str(detail)
+            if len(detail_s) > 1000:
+                detail_s = detail_s[:1000] + "…"
+            return f"检索失败：Hub 返回 HTTP {r.status_code}。详细信息：{detail_s}"
 
         data = r.json()
         results = data.get("results") or []

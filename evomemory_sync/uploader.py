@@ -120,10 +120,12 @@ def json_to_experiment_payload(data: dict[str, Any]) -> dict[str, Any]:
     model_s = str(data.get("model_summary") or data.get("model_strategy") or "").strip()
     env_s = str(data.get("environment_constraints") or data.get("environment") or "").strip()
     status = str(data.get("status") or "").strip()
+    proposal_context = proposal or "(untitled experiment)"
     if status:
-        env_s = (env_s + "\n\nStatus: " + status).strip()
+        # Keep environment free of status tokens so Hub embeddings stay clean.
+        proposal_context = (proposal_context + "\n\nStatus: " + status).strip()
     out: dict[str, Any] = {
-        "proposal_context": proposal or "(untitled experiment)",
+        "proposal_context": proposal_context,
         "data_strategy": data_s or "(unknown)",
         "model_strategy": model_s or "(unknown)",
         "environment": env_s or "(none)",

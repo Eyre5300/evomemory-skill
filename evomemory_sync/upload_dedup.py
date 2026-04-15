@@ -7,15 +7,88 @@ when the agent retries the same task.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
 import os
+import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO, Iterator
 
 logger = logging.getLogger(__name__)
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
+
+
+@contextlib.contextmanager
+def _locked_state_fp() -> Iterator[BinaryIO]:
+    """Exclusive lock on the dedup state file for read–modify–write (cross-process safe)."""
+    path = _state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fp = open(path, "r+b")
+    except FileNotFoundError:
+        path.write_text(
+            json.dumps({"v": 1, "entries": {}}, indent=2),
+            encoding="utf-8",
+        )
+        fp = open(path, "r+b")
+    try:
+        if sys.platform == "win32":
+            fp.seek(0)
+            msvcrt.locking(fp.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            fcntl.flock(fp.fileno(), fcntl.LOCK_EX)
+        yield fp
+    finally:
+        if sys.platform == "win32":
+            try:
+                fp.seek(0)
+                msvcrt.locking(fp.fileno(), msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+        else:
+            try:
+                fcntl.flock(fp.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+        fp.close()
+
+
+def _read_entries_fp(fp: BinaryIO) -> dict[str, float]:
+    fp.seek(0)
+    raw = fp.read()
+    if not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw.decode("utf-8"))
+        ent = data.get("entries")
+        if isinstance(ent, dict):
+            out: dict[str, float] = {}
+            for k, v in ent.items():
+                if isinstance(k, str) and isinstance(v, (int, float)):
+                    out[k] = float(v)
+            return out
+    except Exception:
+        logger.warning("upload_dedup: could not read state file", exc_info=True)
+    return {}
+
+
+def _write_entries_fp(fp: BinaryIO, entries: dict[str, float]) -> None:
+    try:
+        payload = json.dumps({"v": 1, "entries": entries}, indent=2).encode("utf-8")
+        fp.seek(0)
+        fp.write(payload)
+        fp.truncate()
+        fp.flush()
+        os.fsync(fp.fileno())
+    except Exception:
+        logger.warning("upload_dedup: could not write state file", exc_info=True)
 
 
 def _state_path() -> Path:
@@ -44,36 +117,6 @@ def fingerprint_context(ctx: Any) -> str:
     return hashlib.sha256(blob).hexdigest()
 
 
-def _load_entries() -> dict[str, float]:
-    path = _state_path()
-    if not path.is_file():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        ent = data.get("entries")
-        if isinstance(ent, dict):
-            out: dict[str, float] = {}
-            for k, v in ent.items():
-                if isinstance(k, str) and isinstance(v, (int, float)):
-                    out[k] = float(v)
-            return out
-    except Exception:
-        logger.warning("upload_dedup: could not read %s", path, exc_info=True)
-    return {}
-
-
-def _save_entries(entries: dict[str, float]) -> None:
-    path = _state_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps({"v": 1, "entries": entries}, indent=2),
-            encoding="utf-8",
-        )
-    except Exception:
-        logger.warning("upload_dedup: could not write %s", path, exc_info=True)
-
-
 def _prune_old(entries: dict[str, float], now: float, window: float) -> dict[str, float]:
     cutoff = now - window
     return {k: v for k, v in entries.items() if v >= cutoff}
@@ -85,17 +128,18 @@ def should_skip_duplicate(fingerprint: str) -> bool:
         return False
     now = time.time()
     window = _window_seconds()
-    entries = _prune_old(_load_entries(), now, window)
-    if fingerprint in entries:
-        logger.info(
-            "upload_dedup: skip duplicate context fingerprint=%s… (seen at %s)",
-            fingerprint[:16],
-            entries[fingerprint],
-        )
-        _save_entries(entries)
-        return True
-    _save_entries(entries)
-    return False
+    with _locked_state_fp() as fp:
+        entries = _prune_old(_read_entries_fp(fp), now, window)
+        if fingerprint in entries:
+            logger.info(
+                "upload_dedup: skip duplicate context fingerprint=%s… (seen at %s)",
+                fingerprint[:16],
+                entries[fingerprint],
+            )
+            _write_entries_fp(fp, entries)
+            return True
+        _write_entries_fp(fp, entries)
+        return False
 
 
 def mark_upload_succeeded(fingerprint: str) -> None:
@@ -103,7 +147,8 @@ def mark_upload_succeeded(fingerprint: str) -> None:
         return
     now = time.time()
     window = _window_seconds()
-    entries = _prune_old(_load_entries(), now, window)
-    entries[fingerprint] = now
-    _save_entries(entries)
+    with _locked_state_fp() as fp:
+        entries = _prune_old(_read_entries_fp(fp), now, window)
+        entries[fingerprint] = now
+        _write_entries_fp(fp, entries)
     logger.debug("upload_dedup: recorded fingerprint=%s…", fingerprint[:16])
