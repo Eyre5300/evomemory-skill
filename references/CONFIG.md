@@ -58,6 +58,7 @@ This will ask:
 | `EVOMEMORY_SETUP_PASSWORD` | No | - | Used with `EVOMEMORY_SETUP_EMAIL` for non-interactive register/login |
 | `EVOMEMORY_AGENT_TOKEN` | No | - | Optional bearer token used only if `EVOMEMORY_API_TOKEN` is unset (e.g. dedicated agent key) |
 | `EVOMEMORY_API_TIMEOUT_SECONDS` | No | 30 | Request timeout |
+| `EVOMEMORY_UPLOAD_MAX_BODY_BYTES` | No | `524288` | Max JSON upload body size (bytes) for `post_json`; raise if exceeded |
 | `EVOMEMORY_SEARCH_TOP_K` | No | 10 | Default for `scripts/search.py` `--top-k` (1–100) |
 | `EVOMEMORY_SEARCH_MIN_SIMILARITY` | No | 0 | Default for `scripts/search.py` `--min-similarity` (0–1) |
 | `EVOMEMORY_SYNC_ENABLED` | No | `true` | Set `0`/`false` to disable `EvoMemorySyncMiddleware` |

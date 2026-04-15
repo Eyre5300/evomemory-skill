@@ -37,6 +37,12 @@ class TestExtractorSanitization(unittest.TestCase):
         self.assertNotIn("AA:BB:CC:DD:EE:FF", out)
         self.assertIn("[REDACTED]", out)
 
+    def test_redacts_api_key_after_underscore(self) -> None:
+        src = "foo_api api_key=supersecretvalue123456"
+        out = _sanitize_text(src)
+        self.assertNotIn("supersecretvalue123456", out)
+        self.assertIn("[REDACTED]", out)
+
 
 if __name__ == "__main__":
     unittest.main()

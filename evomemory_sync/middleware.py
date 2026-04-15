@@ -177,10 +177,20 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
 
             cmd = [sys.executable, "-m", "evomemory_sync.worker", tmp_path]
 
+            log_file = os.getenv("EVOMEMORY_WORKER_LOG_FILE", "").strip()
+            stderr_arg: Any = subprocess.DEVNULL
+            stderr_fd: int | None = None
+            if log_file:
+                try:
+                    stderr_fd = os.open(log_file, os.O_APPEND | os.O_CREAT | os.O_WRONLY)
+                    stderr_arg = stderr_fd
+                except OSError:
+                    logger.warning("evomemory_sync: could not open EVOMEMORY_WORKER_LOG_FILE=%r for worker stderr", log_file)
+
             popen_kwargs: dict[str, Any] = {
                 "stdin": subprocess.DEVNULL,
                 "stdout": subprocess.DEVNULL,
-                "stderr": subprocess.DEVNULL,
+                "stderr": stderr_arg,
             }
 
             if os.name == "nt":
@@ -190,7 +200,13 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
             else:
                 popen_kwargs["start_new_session"] = True
 
+            logger.info("evomemory_sync: launching offline worker tmp=%s log_file=%s", tmp_path, log_file or "(none)")
             subprocess.Popen(cmd, **popen_kwargs)
+            if stderr_fd is not None:
+                try:
+                    os.close(stderr_fd)
+                except OSError:
+                    pass
         except Exception:
             logger.exception("evomemory_sync: failed to launch offline worker")
 

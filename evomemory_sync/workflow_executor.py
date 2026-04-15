@@ -14,13 +14,8 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from .agent_tools import _base_url
-from .uploader import (
-    BROWSER_UA,
-    DEFAULT_ACCEPT,
-    DEFAULT_ACCEPT_LANGUAGE,
-    env,
-    tls_verify,
-)
+from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
+from .uploader import env, tls_verify
 from .workflow_schema import EvoWorkflow, LLMConfig, WorkflowEnvironment
 
 _DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=10.0)

@@ -201,6 +201,47 @@ def post_json(url: str, payload: dict[str, Any], timeout: float = 15.0, *, verif
         return r.json()
 
 
+def _auth_try_order(mode: str) -> list[str]:
+    if mode == "register":
+        return ["register"]
+    if mode == "login":
+        return ["login"]
+    return ["register", "login"]
+
+
+def _authenticate_on_candidates(
+    candidates: list[str],
+    email: str,
+    password: str,
+    verify_tls: bool,
+    try_order: list[str],
+) -> tuple[Optional[str], Optional[str], Optional[Exception]]:
+    last_err: Optional[Exception] = None
+    for hub_base in candidates:
+        for m in try_order:
+            try:
+                if m == "register":
+                    print(f"Trying to register via {hub_base} …")
+                    data = post_json(
+                        hub_base + "/auth/register",
+                        {"email": email, "password": password},
+                        verify=verify_tls,
+                    )
+                else:
+                    print(f"Trying to login via {hub_base} …")
+                    data = post_json(
+                        hub_base + "/auth/login",
+                        {"email": email, "password": password},
+                        verify=verify_tls,
+                    )
+                token = str(data.get("access_token") or "")
+                if token:
+                    return token, hub_base, None
+            except Exception as e:
+                last_err = e
+    return None, None, last_err
+
+
 def cmd_browse(args):
     """Browse-only mode (no token needed)."""
     try:
@@ -237,43 +278,10 @@ def cmd_share(args):
         print("Error: Password too short (min 8 characters).")
         sys.exit(2)
 
-    token: Optional[str] = None
-    last_err: Optional[Exception] = None
-    working: Optional[str] = None
-
-    if args.mode == "register":
-        try_order = ["register"]
-    elif args.mode == "login":
-        try_order = ["login"]
-    else:
-        try_order = ["register", "login"]
-
-    for hub_base in candidates:
-        for m in try_order:
-            try:
-                if m == "register":
-                    print(f"Trying to register via {hub_base} …")
-                    data = post_json(
-                        hub_base + "/auth/register",
-                        {"email": email, "password": password},
-                        verify=verify_tls,
-                    )
-                else:
-                    print(f"Trying to login via {hub_base} …")
-                    data = post_json(
-                        hub_base + "/auth/login",
-                        {"email": email, "password": password},
-                        verify=verify_tls,
-                    )
-                token = str(data.get("access_token") or "")
-                if token:
-                    working = hub_base
-                    break
-            except Exception as e:
-                last_err = e
-                token = None
-        if token:
-            break
+    try_order = _auth_try_order(args.mode)
+    token, working, last_err = _authenticate_on_candidates(
+        candidates, email, password, verify_tls, try_order
+    )
 
     if not token:
         print(f"Error: Failed to get access_token. {last_err}")
@@ -330,36 +338,9 @@ def cmd_wizard(args):
         print("Error: Password too short (min 8 characters).")
         sys.exit(2)
 
-    token: Optional[str] = None
-    last_err: Optional[Exception] = None
-    working: Optional[str] = None
-
-    for hub_base in candidates:
-        for m in ["register", "login"]:
-            try:
-                if m == "register":
-                    print(f"Trying to register via {hub_base} …")
-                    data = post_json(
-                        hub_base + "/auth/register",
-                        {"email": email, "password": password},
-                        verify=verify_tls,
-                    )
-                else:
-                    print(f"Trying to login via {hub_base} …")
-                    data = post_json(
-                        hub_base + "/auth/login",
-                        {"email": email, "password": password},
-                        verify=verify_tls,
-                    )
-                token = str(data.get("access_token") or "")
-                if token:
-                    working = hub_base
-                    break
-            except Exception as e:
-                last_err = e
-                token = None
-        if token:
-            break
+    token, working, last_err = _authenticate_on_candidates(
+        candidates, email, password, verify_tls, ["register", "login"]
+    )
 
     if not token:
         print(f"Error: Failed to get access_token. {last_err}")

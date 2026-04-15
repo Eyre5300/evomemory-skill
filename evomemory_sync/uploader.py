@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -12,15 +13,9 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-logger = logging.getLogger(__name__)
+from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
 
-BROWSER_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/122.0.0.0 Safari/537.36"
-)
-DEFAULT_ACCEPT = "application/json"
-DEFAULT_ACCEPT_LANGUAGE = "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7"
+logger = logging.getLogger(__name__)
 
 
 def env(name: str, default: str = "") -> str:
@@ -38,6 +33,14 @@ def _env_bool(name: str, default: bool) -> bool:
 def tls_verify() -> bool:
     """Default secure TLS verification; opt-out only for debugging."""
     return not _env_bool("EVOMEMORY_INSECURE", False)
+
+
+def _max_upload_body_bytes() -> int:
+    raw = env("EVOMEMORY_UPLOAD_MAX_BODY_BYTES", "524288")
+    try:
+        return max(4096, int(raw))
+    except ValueError:
+        return 524288
 
 
 def get_base_url() -> str:
@@ -178,9 +181,17 @@ def post_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dic
     req_headers.setdefault("Accept-Language", DEFAULT_ACCEPT_LANGUAGE)
     req_headers.setdefault("Content-Type", "application/json")
 
+    raw_body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    limit = _max_upload_body_bytes()
+    if len(raw_body) > limit:
+        raise RuntimeError(
+            f"Request body size {len(raw_body)} bytes exceeds limit {limit} "
+            f"(set EVOMEMORY_UPLOAD_MAX_BODY_BYTES to raise; default 524288)."
+        )
+
     for attempt in range(max_retries):
         try:
-            r = requests.post(url, json=payload, headers=req_headers, timeout=timeout, verify=tls_verify())
+            r = requests.post(url, data=raw_body, headers=req_headers, timeout=timeout, verify=tls_verify())
             if 200 <= r.status_code < 300:
                 return r.json()
             try:

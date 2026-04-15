@@ -23,15 +23,9 @@ from typing import Any, Optional
 
 import httpx
 
+from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
 from .env_loader import load_env
-from .uploader import (
-    BROWSER_UA,
-    DEFAULT_ACCEPT,
-    DEFAULT_ACCEPT_LANGUAGE,
-    env,
-    get_base_url,
-    tls_verify,
-)
+from .uploader import env, get_base_url, tls_verify
 
 try:
     load_env()

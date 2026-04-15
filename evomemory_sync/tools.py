@@ -9,14 +9,9 @@ from typing import Any, Dict, List, Tuple
 import requests
 from langchain_core.tools import tool
 
+from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
 from .env_loader import load_env
-from .uploader import (
-    BROWSER_UA,
-    DEFAULT_ACCEPT,
-    DEFAULT_ACCEPT_LANGUAGE,
-    get_base_url,
-    tls_verify,
-)
+from .uploader import get_base_url, tls_verify
 
 
 def _env(name: str, default: str = "") -> str:
@@ -83,6 +78,8 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
     shown = results[: max_items]
     blocks: List[str] = []
     for i, item in enumerate(shown, 1):
+        mem_id = str(item.get("id") or item.get("memory_id") or "unknown")
+        id_line = f"ID: {mem_id}"
         if kind == "ideation":
             title = str(item.get("title") or item.get("goal") or "(untitled)")
             core = str(item.get("core_idea") or item.get("core idea") or "")
@@ -94,6 +91,7 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
 
             lines = [
                 f"[{i}] 标题: {title}",
+                id_line,
                 f"类型/状态: {mem_type}" if mem_type else "",
                 f"目标: {goal}" if goal else "",
                 f"核心思路/避坑指南: {core_preview}" if core_preview else "核心思路/避坑指南: (empty)",
@@ -108,6 +106,7 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
             peid = str(item.get("parent_experiment_id") or "") or "—"
             lines = [
                 f"[{i}] {title}",
+                id_line,
                 f"    描述: {desc}" if desc else "",
                 f"    parent_ideation_id: {pid}",
                 f"    parent_experiment_id: {peid}",
@@ -128,6 +127,7 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
 
             lines = [
                 f"[{i}] 实验上下文: {prop_preview}",
+                id_line,
                 f"状态: {mem_status}" if mem_status else "",
                 f"数据策略: {data_preview}" if data_preview else "",
                 f"模型策略: {model_preview}" if model_preview else "",

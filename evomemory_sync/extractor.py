@@ -47,10 +47,20 @@ def _tls_verify() -> bool:
 
 def _sanitize_text(text: str) -> str:
     s = text
-    # Secrets / tokens / API keys (generic and provider-specific)
-    s = re.sub(r"(?i)\b(sk|api[_-]?key|access[_-]?token|secret|password|passwd)\b\s*[:=]\s*['\"]?[A-Za-z0-9_\-\.=+/]{8,}['\"]?", r"\1=[REDACTED]", s)
-    s = re.sub(r"\bsk-[A-Za-z0-9]{10,}\b", "[REDACTED]", s)
-    s = re.sub(r"\b(ghp|github_pat|xoxb|xoxp|AKIA)[A-Za-z0-9_\-]{8,}\b", "[REDACTED]", s)
+    # Secrets / tokens / API keys (generic and provider-specific).
+    # Use (?<![A-Za-z0-9_]) instead of \b so keys like `api_key=` still match after underscores.
+    _kw = r"(sk|api[_-]?key|access[_-]?token|secret|password|passwd)"
+    s = re.sub(
+        rf"(?i)(?<![A-Za-z0-9_]){_kw}\s*[:=]\s*['\"]?[A-Za-z0-9_\-\.=+/]{{8,}}['\"]?",
+        r"\1=[REDACTED]",
+        s,
+    )
+    s = re.sub(r"(?<![A-Za-z0-9_])sk-[A-Za-z0-9]{10,}(?![A-Za-z0-9_])", "[REDACTED]", s)
+    s = re.sub(
+        r"(?<![A-Za-z0-9_])(ghp|github_pat|xoxb|xoxp|AKIA)[A-Za-z0-9_\-]{8,}(?![A-Za-z0-9_])",
+        "[REDACTED]",
+        s,
+    )
     # File paths (Windows + Unix-like absolute paths)
     s = re.sub(r"[A-Za-z]:\\(?:[^\\\s\"']+\\)*[^\\\s\"']*", "[REDACTED]", s)
     s = re.sub(r"/(?:Users|home|root|var|tmp|private|opt|etc)/[^\s\"']+", "[REDACTED]", s)
@@ -81,79 +91,37 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     return json.loads(text)
 
 
-SYSTEM_PROMPT = """You are EvoMemory's extraction model. Output ONE JSON object only (no markdown).
+SYSTEM_PROMPT = """You are EvoMemory's extraction model. Reply with ONE JSON object only (no markdown fences).
 
-Classify the agent run for a shared research memory hub:
+Goal: classify the agent trace for a public research memory hub.
 
-Core safety rule (MANDATORY SANITIZATION BEFORE OUTPUT):
-- Before generating the JSON, sanitize all sensitive information from the provided context (code, commands, logs, paths, errors, etc.).
-- Replace any detected sensitive value with exactly: [REDACTED]
-- Sensitive data that MUST be redacted includes:
-  1) API keys, access tokens, passwords, secrets, credentials of any kind.
-  2) Local absolute filesystem paths (e.g. C:\\Users\\xxx\\..., /Users/xxx/..., /home/xxx/...).
-  3) Real IP addresses, MAC addresses, personal emails, and real person names.
-- Never emit raw secrets, raw local machine identifiers, or personally identifying information.
-- Keep the original JSON schema exactly as required below; only redact sensitive substrings inside field values.
+Sanitization (mandatory before you write JSON):
+- Redact secrets, tokens, passwords, local absolute paths, IPs, MACs, emails, real names → use exactly [REDACTED] inside string values.
+- Keep valid JSON keys/shapes below; never leak raw credentials.
 
-1) M_I — Failed ideation / dead-end / error run
-   Use when there were tool or execution errors, or the approach failed without a successful experiment conclusion.
-   Required shape:
-   {
-     "memory_type": "ideation",
-     "status": "failed",
-     "proposal_summary": "what was attempted",
-     "trigger_conditions": "what went wrong or failed",
-     "do_not_repeat_notes": "what to avoid next time",
-     "retrieval_tags": "short comma-separated tags"
-   }
+Choose exactly one output type:
 
-2) M_E — Successful experiment memory
-   Use when the run produced substantive experimental work with a successful outcome (meaningful code execution, results, no unresolved terminal tool errors).
-   Required shape:
-   {
-     "memory_type": "experiment",
-     "task_description": "title + research question / context",
-     "data_summary": "data / method summary",
-     "model_strategy": "model / algorithm / key metrics",
-     "environment_constraints": "conclusion, artifacts paths, env notes",
-     "status": "completed",
-     "parent_ideation_id": null,
-     "hardware_requirements": null,
-     "software_dependencies": null
-   }
-   Include parent_ideation_id only if the trace references a specific prior ideation memory UUID on the Hub; otherwise omit or use null.
+A) Skip — no research value or empty/chit-chat: {"skip": true}
 
-3) Skip
-   If the conversation is empty, pure chit-chat, or has no research content worth sharing:
-   { "skip": true }
+B) Failed ideation — tool errors, failed runs, dead ends:
+   {"memory_type":"ideation","status":"failed","proposal_summary","trigger_conditions","do_not_repeat_notes","retrieval_tags"}
 
-Prefer M_I when any ToolMessage indicated failure or the trace shows execution errors. Prefer M_E only for clear successful experiment closure.
-Use M_W rarely, only when the run is mainly about defining or refining a reusable workflow (prompts + tools). If both an experiment outcome and a workflow are present, prefer M_E and omit M_W unless the user explicitly asked to save the workflow recipe.
+C) Promising ideation — shareable idea, no blocking errors:
+   {"memory_type":"ideation","status":"promising","goal","title","core_idea","why_promising","requirements","validation_plan"}
 
-Optional promising ideation (only if no errors and the user produced a shareable idea without a full experiment):
-{
-  "memory_type": "ideation",
-  "status": "promising",
-  "goal": "...",
-  "title": "...",
-  "core_idea": "...",
-  "why_promising": "...",
-  "requirements": "...",
-  "validation_plan": "..."
-}
+D) Completed experiment — substantive successful run, no unresolved tool errors. Required keys:
+   memory_type "experiment", status "completed", task_description, data_summary, model_strategy, environment_constraints;
+   optional parent_ideation_id, hardware_requirements, software_dependencies (use null if unknown).
 
-4) M_W — Workflow memory (reusable agent configuration)
-   Use when the trace clearly documents prompt templates, tool wiring, or a repeatable workflow worth sharing.
-   Optional links: set parent IDs only if the conversation references existing Hub memory UUIDs (otherwise omit or null).
-   {
-     "memory_type": "workflow",
-     "title": "...",
-     "description": "...",
-     "prompt_templates": "main prompts / system instructions (redacted)",
-     "tool_configuration": "tools, MCP, or agent graph notes (redacted)",
-     "parent_ideation_id": null,
-     "parent_experiment_id": null
-   }
+E) Workflow — mainly reusable prompts + tool wiring (rare; skip if user did not ask to save workflow). Required keys:
+   memory_type "workflow", title, description, prompt_templates, tool_configuration;
+   optional parent_ideation_id, parent_experiment_id (null unless Hub UUID is explicit).
+
+Rules: Prefer failed ideation when trace shows errors. Prefer experiment only on clear success. parent_* only if a Hub UUID is explicitly referenced.
+
+Examples (shape only; redact real secrets in your output):
+{"memory_type":"ideation","status":"failed","proposal_summary":"Tried X","trigger_conditions":"Tool error Y","do_not_repeat_notes":"Avoid Z","retrieval_tags":"x,y"}
+{"memory_type":"experiment","status":"completed","task_description":"Q","data_summary":"D","model_strategy":"M","environment_constraints":"E","parent_ideation_id":null,"hardware_requirements":null,"software_dependencies":null}
 """
 
 
