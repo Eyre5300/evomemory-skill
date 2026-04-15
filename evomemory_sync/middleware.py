@@ -6,9 +6,11 @@ import asyncio
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,7 @@ from .sanitize import sanitize_context
 logger = logging.getLogger(__name__)
 
 _DOTENV_LOADED = False
+_DOTENV_LOCK = threading.Lock()
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -32,9 +35,10 @@ def _env_bool(name: str, default: bool) -> bool:
 
 def _maybe_load_dotenv() -> None:
     global _DOTENV_LOADED
-    if _DOTENV_LOADED:
-        return
-    _DOTENV_LOADED = True
+    with _DOTENV_LOCK:
+        if _DOTENV_LOADED:
+            return
+        _DOTENV_LOADED = True
     try:
         from .env_loader import load_env
 
@@ -170,21 +174,60 @@ def _last_tool_messages(messages: list[BaseMessage], limit: int = 6) -> list[dic
     return out[-limit:]
 
 
+def _extract_hub_references(messages: list[BaseMessage]) -> set[str]:
+    """Extract Hub experience IDs cited in the conversation via [HUB_REF:uuid] markers."""
+    refs: set[str] = set()
+    pattern = re.compile(r"\[HUB_REF:([a-f0-9\-]+)\]", re.IGNORECASE)
+    for msg in messages:
+        text = _text_content(msg)
+        for match in pattern.finditer(text):
+            refs.add(match.group(1))
+        # Also check tool call arguments for search results
+        if isinstance(msg, AIMessage):
+            calls = getattr(msg, "tool_calls", None) or []
+            for tc in calls:
+                args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", {})
+                if isinstance(args, dict):
+                    for v in args.values():
+                        if isinstance(v, str):
+                            for m in pattern.finditer(v):
+                                refs.add(m.group(1))
+    return refs
+
+
 def _build_context(state: AgentState) -> dict[str, Any]:
     messages = list(state.get("messages") or [])
     task = _first_human_task(messages)
     code, errors, has_err = _collect_tool_code_and_errors(messages)
+    hub_refs = _extract_hub_references(messages)
     raw: dict[str, Any] = {
         "task_description": task,
         "executed_code_and_commands": code,
         "error_logs": errors,
         "has_tool_error_flag": has_err,
         "last_tool_messages": _last_tool_messages(messages),
+        "_hub_references": list(hub_refs) if hub_refs else [],
     }
     # Hard redact before any temp file / worker / LLM sees the trace (do not rely on model self-sanitization).
     if _env_bool("EVOMEMORY_SYNC_SEND_RAW_CONTEXT", False):
         return raw
     return sanitize_context(raw)
+
+
+def _should_verify_instead_of_upload(ctx: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Determine whether to verify existing Hub experience instead of uploading a new one.
+
+    Returns (should_verify, hub_reference_ids).
+    Logic:
+    - Hub refs present + no errors → verify (agent used Hub experience successfully)
+    - Hub refs present + errors → upload corrected experience (will link to parents)
+    - No hub refs → upload new experience
+    """
+    hub_refs = ctx.get("_hub_references") or []
+    has_err = ctx.get("has_tool_error_flag", False)
+    if hub_refs and not has_err:
+        return True, hub_refs
+    return False, hub_refs
 
 
 class EvoMemorySyncMiddleware(AgentMiddleware):
@@ -201,6 +244,35 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
             return False
         return _sync_enabled()
 
+    def _send_verifications(self, hub_ref_ids: list[str]) -> None:
+        """POST verification for each referenced Hub experience ID."""
+        import requests
+        from .hub_url import get_base_url
+        from .uploader import hub_headers, tls_verify
+
+        base = get_base_url()
+        try:
+            headers = hub_headers()
+        except RuntimeError:
+            logger.debug("evomemory_sync: no token, skip verification")
+            return
+        timeout = float(os.getenv("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
+        for ref_id in hub_ref_ids:
+            try:
+                r = requests.post(
+                    f"{base}/memory/{ref_id}/verify",
+                    json={},
+                    headers=headers,
+                    timeout=timeout,
+                    verify=tls_verify(),
+                )
+                if r.status_code < 300:
+                    logger.info("evomemory_sync: verified %s", ref_id)
+                else:
+                    logger.debug("evomemory_sync: verify %s returned %s", ref_id, r.status_code)
+            except Exception as e:
+                logger.debug("evomemory_sync: verify %s failed: %s", ref_id, e)
+
     def _finalize(self, state: AgentState, runtime: Runtime) -> None:
         _maybe_load_dotenv()
         if not self._is_enabled():
@@ -211,6 +283,28 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
         ctx = _build_context(state)
         if not ctx.get("task_description"):
             return
+
+        # ── Conditional routing: verify vs upload ──
+        should_verify, hub_refs = _should_verify_instead_of_upload(ctx)
+        if should_verify and hub_refs:
+            # Agent successfully used a Hub experience → send verification, skip upload
+            logger.info(
+                "evomemory_sync: task succeeded using Hub refs %s → verifying instead of uploading",
+                hub_refs,
+            )
+            try:
+                self._send_verifications(hub_refs)
+            except Exception:
+                logger.warning("evomemory_sync: verification request failed", exc_info=True)
+            return
+
+        # Pass hub_refs as parent references for corrected experiences
+        if hub_refs:
+            ctx.setdefault("_hub_references", hub_refs)
+            logger.info(
+                "evomemory_sync: task failed despite Hub refs %s → uploading corrected experience",
+                hub_refs,
+            )
 
         tmp_path: str | None = None
         try:

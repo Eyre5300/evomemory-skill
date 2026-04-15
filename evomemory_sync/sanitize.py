@@ -21,9 +21,16 @@ def sanitize_text(text: str) -> str:
         "[REDACTED]",
         s,
     )
-    s = re.sub(r"[A-Za-z]:\\(?:[^\\\s\"']+\\)*[^\\\s\"']*", "[REDACTED]", s)
-    s = re.sub(r"/(?:Users|home|root|var|tmp|private|opt|etc)/[^\s\"']+", "[REDACTED]", s)
-    s = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[REDACTED]", s)
+    # Windows path: use possessive-like non-backtracking pattern to avoid ReDoS
+    s = re.sub(r"[A-Za-z]:(?:\\[^\\\s\"\']+)+", "[REDACTED]", s)
+    s = re.sub(r"/(?:Users|home|root|var|tmp|private|opt|etc)/[^\s\"\']+", "[REDACTED]", s)
+    # IP address: use negative lookbehind/lookahead to avoid matching version numbers (e.g. 4.40.0, 3.11.1)
+    # Only match when preceded by a non-digit/dot and followed by a non-digit/dot
+    s = re.sub(
+        r"(?<![.\d])(?:\d{1,3}\.){3}\d{1,3}(?![.\d])",
+        "[REDACTED]",
+        s,
+    )
     s = re.sub(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b", "[REDACTED]", s)
     s = re.sub(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b", "[REDACTED]", s)
     return s

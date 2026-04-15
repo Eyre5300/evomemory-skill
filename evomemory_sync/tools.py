@@ -76,7 +76,7 @@ def _truncate_preview_text(text: str, max_chars: int) -> str:
 
 def _validate_kind(memory_kind: str) -> Tuple[bool, str]:
     kind = (memory_kind or "").strip().lower()
-    if kind in {"ideation", "experiment", "workflow"}:
+    if kind in {"ideation", "experiment", "workflow", "recipe"}:
         return True, kind
     return False, kind
 
@@ -97,7 +97,8 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
     blocks: List[str] = []
     for i, item in enumerate(shown, 1):
         mem_id = str(item.get("id") or item.get("memory_id") or "unknown")
-        id_line = f"ID: {mem_id}"
+        # Citation tag for traceability: middleware can detect these to avoid re-uploading
+        id_line = f"ID: {mem_id} [HUB_REF:{mem_id}]"
         if kind == "ideation":
             title = str(item.get("title") or item.get("goal") or "(untitled)")
             core = str(item.get("core_idea") or item.get("core idea") or "")
@@ -128,6 +129,26 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
                 f"    描述: {desc}" if desc else "",
                 f"    parent_ideation_id: {pid}",
                 f"    parent_experiment_id: {peid}",
+                f"    相似度 {pick_similarity(item)}" if pick_similarity(item) else "",
+            ]
+            blocks.append("\n".join([x for x in lines if x]))
+        elif kind == "recipe":
+            trigger = str(item.get("trigger") or "").strip()
+            problem = str(item.get("problem") or "").strip()
+            solution = str(item.get("solution") or "").strip()
+            env_snap = str(item.get("env_snapshot") or "").strip()
+            result_s = str(item.get("result") or "").strip()
+            tags = str(item.get("tags") or "").strip()
+            verified = int(item.get("verified_count") or 0)
+            lines = [
+                f"[{i}] 📋 {trigger or '(untitled recipe)'}",
+                id_line,
+                f"    问题: {problem}" if problem else "",
+                f"    方案: {solution}" if solution else "",
+                f"    环境: {env_snap}" if env_snap else "",
+                f"    效果: {result_s}" if result_s else "",
+                f"    标签: {tags}" if tags else "",
+                f"    验证次数: {verified}" if verified else "",
                 f"    相似度 {pick_similarity(item)}" if pick_similarity(item) else "",
             ]
             blocks.append("\n".join([x for x in lines if x]))
@@ -163,11 +184,11 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
 
 @tool
 def search_evomemory(query: str, memory_kind: str) -> str:
-    """在以下场景请优先调用此工具：你缺乏研究思路、需要快速借鉴社区方案、或者代码执行遇到棘手报错难以推进。它会检索 EvoMemory Hub 社区历史经验（向量相似度）。`memory_kind` 为 `ideation`、`experiment` 或 `workflow`。"""
+    """在以下场景请优先调用此工具：你缺乏研究思路、需要快速借鉴社区方案、或者代码执行遇到棘手报错难以推进。它会检索 EvoMemory Hub 社区历史经验（向量相似度）。`memory_kind` 为 `ideation`、`experiment`、`workflow` 或 `recipe`。"""
 
     ok, kind = _validate_kind(memory_kind)
     if not ok:
-        return f"无效 memory_kind: {memory_kind!r}。请传入 'ideation'、'experiment' 或 'workflow'。"
+        return f"无效 memory_kind: {memory_kind!r}。请传入 'ideation'、'experiment'、'workflow' 或 'recipe'。"
 
     q = (query or "").strip()
     if not q:

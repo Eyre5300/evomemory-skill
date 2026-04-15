@@ -219,6 +219,39 @@ def post_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dic
         raise err
 
 
+def json_to_recipe_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """Map recipe extraction JSON to Hub upload payload."""
+    mem_type = str(data.get("memory_type") or "").strip().lower()
+    if mem_type != "recipe":
+        raise ValueError("not a recipe JSON")
+    trigger = str(data.get("trigger") or "").strip()
+    problem = str(data.get("problem") or "").strip()
+    solution = str(data.get("solution") or "").strip()
+    env_snap = str(data.get("env_snapshot") or "").strip()
+    result = str(data.get("result") or "").strip()
+    tags = str(data.get("tags") or "").strip()
+    out: dict[str, Any] = {
+        "trigger": trigger or "(unknown trigger)",
+        "problem": problem or "(unknown problem)",
+        "solution": solution or "(unknown solution)",
+        "env_snapshot": env_snap or "(none)",
+        "result": result or "(none)",
+        "tags": tags,
+    }
+    # Optional parent linking
+    pi = data.get("parent_ideation_id") or data.get("parent_ideation")
+    if pi is not None and str(pi).strip():
+        out["parent_ideation_id"] = str(pi).strip()
+    pe = data.get("parent_experiment_id") or data.get("parent_experiment")
+    if pe is not None and str(pe).strip():
+        out["parent_experiment_id"] = str(pe).strip()
+    # Hub references (for verification flow)
+    hub_refs = data.get("_hub_references")
+    if hub_refs:
+        out["_hub_references"] = hub_refs
+    return out
+
+
 def upload_memory_record(data: dict[str, Any]) -> dict[str, Any] | None:
     """Map extractor JSON to Hub upload endpoints. Returns API JSON or None if skipped."""
     if not isinstance(data, dict) or data.get("skip") is True:
@@ -239,6 +272,9 @@ def upload_memory_record(data: dict[str, Any]) -> dict[str, Any] | None:
     elif mem_type == "workflow":
         body = json_to_workflow_payload(data)
         url = f"{base}/memory/workflow/upload"
+    elif mem_type == "recipe":
+        body = json_to_recipe_payload(data)
+        url = f"{base}/memory/recipe/upload"
     else:
         logger.debug("evomemory_sync: unknown memory_type %r, skip upload", data.get("memory_type"))
         return None

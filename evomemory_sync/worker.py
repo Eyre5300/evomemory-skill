@@ -40,9 +40,6 @@ def _setup_logging() -> None:
     )
 
 
-_setup_logging()
-
-
 def main() -> int:
     if len(sys.argv) != 2:
         return 2
@@ -91,5 +88,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    _setup_logging()
     raise SystemExit(main())
 

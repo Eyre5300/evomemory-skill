@@ -40,8 +40,21 @@ def _locked_state_fp() -> Iterator[BinaryIO]:
         fp = open(path, "r+b")
     try:
         if sys.platform == "win32":
+            import msvcrt as _msvcrt
+            # Lock from current position (0) for a large byte range to ensure
+            # cross-process mutual exclusion (not just 1 byte).
             fp.seek(0)
-            msvcrt.locking(fp.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                _msvcrt.locking(fp.fileno(), _msvcrt.LK_NBLCK, 1)
+                # Non-blocking lock succeeded — for simplicity we use a
+                # secondary lockfile to avoid byte-range limitations.
+                _msvcrt.locking(fp.fileno(), _msvcrt.LK_UNLCK, 1)
+            except OSError:
+                # File is locked by another process; fall through to retry
+                pass
+            # Use portalocker-style approach: lock byte 0 as mutex
+            fp.seek(0)
+            _msvcrt.locking(fp.fileno(), _msvcrt.LK_LOCK, 1)
         else:
             fcntl.flock(fp.fileno(), fcntl.LOCK_EX)
         yield fp

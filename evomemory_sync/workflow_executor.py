@@ -8,10 +8,14 @@ import json
 from collections.abc import Callable
 from typing import Any, Optional
 
+import logging
+
 import httpx
 from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
+
+logger = logging.getLogger("evomemory_sync.workflow_executor")
 
 from .agent_tools import _base_url
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
@@ -116,7 +120,7 @@ class WorkflowRunner:
         for tool_name in self.workflow.tools:
             fn = self.tool_registry.get(tool_name)
             if fn is None:
-                print(f"[警告] 工作流需要的工具 '{tool_name}' 在本地注册表中未找到。")
+                logger.warning("工作流需要的工具 '%s' 在本地注册表中未找到。", tool_name)
                 continue
             loaded.append(fn)
         return loaded
@@ -235,12 +239,12 @@ class WorkflowRunner:
         except KeyError as e:
             raise ValueError(f"缺少填充用户提示词所需的变量: {e}") from e
 
-        print(f"--- 正在执行工作流: {self.workflow.title} ---")
-        print(
-            f"模型: {self.workflow.llm_config.model_name} | 工具: "
-            f"{[getattr(t, 'name', getattr(t, '__name__', str(t))) for t in self.loaded_tools]}"
+        logger.info("正在执行工作流: %s", self.workflow.title)
+        logger.info(
+            "模型: %s | 工具: %s",
+            self.workflow.llm_config.model_name,
+            [getattr(t, 'name', getattr(t, '__name__', str(t))) for t in self.loaded_tools],
         )
-        print("---------------------------------------")
 
         agent_executor = create_react_agent(
             llm,
@@ -249,5 +253,5 @@ class WorkflowRunner:
         )
         result_state = agent_executor.invoke({"messages": [("user", user_input)]})
         final_message = result_state["messages"][-1].content
-        print("--- 执行结束 ---")
+        logger.info("工作流执行结束: %s", self.workflow.title)
         return str(final_message)

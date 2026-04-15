@@ -15,6 +15,8 @@ Mapping overview (LLM JSON → json_to_* input → Hub POST body):
   ``environment_constraints``, optional parents → Hub experiment fields.
 - **Workflow**: ``title``, ``description``, ``prompt_templates``, ``tool_configuration``,
   optional parents → Hub workflow fields.
+- **Recipe**: ``trigger``, ``problem``, ``solution``, ``env_snapshot``, ``result``,
+  ``tags`` → lightweight experience card (highest value-per-token ratio).
 """
 
 from __future__ import annotations
@@ -55,9 +57,13 @@ D) Completed experiment — substantive successful run. Keys (task_description /
 E) Workflow — reusable prompts + tool wiring (rare). Keys:
 {"memory_type":"workflow","title":"","description":"","prompt_templates":"","tool_configuration":"","parent_ideation_id":null,"parent_experiment_id":null}
 
-Rules: Prefer failed ideation when trace shows errors. Prefer experiment only on clear success. parent_* only if a Hub UUID is explicitly referenced.
+F) Recipe — lightweight atomic experience card (PREFERRED for most agent traces). Use when the trace contains a concrete problem-solution pair that other agents can directly reuse. Keys:
+{"memory_type":"recipe","trigger":"","problem":"","solution":"","env_snapshot":"","result":"","tags":""}
+
+Rules: Prefer **recipe** when the trace has a clear trigger→solution pattern. Prefer failed ideation only for complex multi-step failures. Prefer experiment only on clear success with full metrics. parent_* only if a Hub UUID is explicitly referenced.
 
 Examples (shape only; redact real secrets in your output):
+{"memory_type":"recipe","trigger":"pytorch OOM during 7B fine-tuning","problem":"CUDA out of memory with batch_size=64 on RTX 3090","solution":"gradient_checkpointing=True + batch_size=32","env_snapshot":"transformers==4.40.0, torch==2.3.0, RTX 3090 24GB","result":"training succeeded, VRAM 24.1GB→18.3GB, speed -15%","tags":"pytorch,OOM,fine-tuning"}
 {"memory_type":"ideation","status":"failed","proposal_summary":"Tried X","trigger_conditions":"Tool error Y","do_not_repeat_notes":"Avoid Z","retrieval_tags":"x,y"}
 {"memory_type":"experiment","status":"completed","task_description":"Q","data_summary":"D","model_strategy":"M","environment_constraints":"E","parent_ideation_id":null,"hardware_requirements":null,"software_dependencies":null}
 """
@@ -101,5 +107,18 @@ def normalize_llm_extraction(raw: dict[str, Any]) -> dict[str, Any]:
                     if v is not None and str(v).strip():
                         out["proposal_summary"] = str(v).strip()
                         break
+
+    if mt == "recipe":
+        # Normalize tags: accept comma-separated string or list
+        tags_val = out.get("tags")
+        if isinstance(tags_val, list):
+            out["tags"] = ",".join(str(t) for t in tags_val)
+        # Accept aliases for env_snapshot
+        if not str(out.get("env_snapshot") or "").strip():
+            for alt in ("environment", "env", "context"):
+                v = out.get(alt)
+                if v is not None and str(v).strip():
+                    out["env_snapshot"] = str(v).strip()
+                    break
 
     return out
