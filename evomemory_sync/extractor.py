@@ -11,6 +11,7 @@ from typing import Any
 import requests
 import urllib3
 
+from .extraction_fields import EXTRACTOR_SYSTEM_PROMPT
 from .sanitize import sanitize_context as _sanitize_context
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -55,38 +56,6 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     return json.loads(text)
 
 
-SYSTEM_PROMPT = """You are EvoMemory's extraction model. Reply with ONE JSON object only (no markdown fences).
-
-Goal: classify the agent trace for a public research memory hub.
-
-Privacy: The user JSON is **already redacted** client-side before it reaches you. Do not echo secrets, tokens, paths, IPs, emails, or real names if any remain; use [REDACTED] inside string values only when needed. Output only the schema below.
-
-Choose exactly one output type:
-
-A) Skip — no research value or empty/chit-chat: {"skip": true}
-
-B) Failed ideation — tool errors, failed runs, dead ends:
-   {"memory_type":"ideation","status":"failed","proposal_summary","trigger_conditions","do_not_repeat_notes","retrieval_tags"}
-
-C) Promising ideation — shareable idea, no blocking errors:
-   {"memory_type":"ideation","status":"promising","goal","title","core_idea","why_promising","requirements","validation_plan"}
-
-D) Completed experiment — substantive successful run, no unresolved tool errors. Required keys:
-   memory_type "experiment", status "completed", task_description, data_summary, model_strategy, environment_constraints;
-   optional parent_ideation_id, hardware_requirements, software_dependencies (use null if unknown).
-
-E) Workflow — mainly reusable prompts + tool wiring (rare; skip if user did not ask to save workflow). Required keys:
-   memory_type "workflow", title, description, prompt_templates, tool_configuration;
-   optional parent_ideation_id, parent_experiment_id (null unless Hub UUID is explicit).
-
-Rules: Prefer failed ideation when trace shows errors. Prefer experiment only on clear success. parent_* only if a Hub UUID is explicitly referenced.
-
-Examples (shape only; redact real secrets in your output):
-{"memory_type":"ideation","status":"failed","proposal_summary":"Tried X","trigger_conditions":"Tool error Y","do_not_repeat_notes":"Avoid Z","retrieval_tags":"x,y"}
-{"memory_type":"experiment","status":"completed","task_description":"Q","data_summary":"D","model_strategy":"M","environment_constraints":"E","parent_ideation_id":null,"hardware_requirements":null,"software_dependencies":null}
-"""
-
-
 def _call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:
     """Call configured chat model; return parsed dict or None if misconfigured / request failed."""
     api_key = _extractor_api_key()
@@ -114,7 +83,7 @@ def _call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:
         payload: dict[str, Any] = {
             "model": model,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": EXTRACTOR_SYSTEM_PROMPT},
                 {"role": "user", "content": user_content},
             ],
             "temperature": 0.2,

@@ -62,6 +62,8 @@ This will ask:
 | `EVOMEMORY_UPLOAD_DEDUP_ENABLED` | No | `true` | If `true`, skip LLM+upload when the same extraction context was successfully uploaded recently (see dedup window) |
 | `EVOMEMORY_UPLOAD_DEDUP_WINDOW_SECONDS` | No | `86400` | Dedup window (seconds); default 24h |
 | `EVOMEMORY_UPLOAD_DEDUP_STATE_FILE` | No | `$HOME/.evomemory/upload_dedup.json` | JSON store of recent context fingerprints |
+| `EVOMEMORY_HUB_RESOLVE_CACHE_TTL_SECONDS` | No | `3600` | How long `resolve_working_hub_base_url_cached` keeps a probe result (long-running agents can pick up Hub URL changes without restart) |
+| `EVOMEMORY_HUB_RESOLVE_CACHE_MAX_ENTRIES` | No | `32` | Max cached Hub origins (FIFO eviction) |
 | `EVOMEMORY_SEARCH_TOP_K` | No | 10 | Default for `scripts/search.py` `--top-k` (1–100) |
 | `EVOMEMORY_SEARCH_MIN_SIMILARITY` | No | 0 | Default for `scripts/search.py` `--min-similarity` (0–1) |
 | `EVOMEMORY_SYNC_ENABLED` | No | `true` | Set `0`/`false` to disable `EvoMemorySyncMiddleware` |

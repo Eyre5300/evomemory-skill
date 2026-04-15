@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -57,6 +58,22 @@ def _optional_auth_headers() -> Dict[str, str]:
     return headers
 
 
+def _truncate_preview_text(text: str, max_chars: int) -> str:
+    """Compact single-line preview; avoid ending mid-combining-character for cleaner display."""
+    t = (text or "").replace("\n", " ").strip()
+    if max_chars <= 0:
+        return ""
+    if len(t) <= max_chars:
+        return t
+    cut = t[:max_chars]
+    while cut and unicodedata.combining(cut[-1]):
+        cut = cut[:-1]
+    cut = cut.rstrip()
+    if len(cut) < len(t):
+        return cut + "…"
+    return cut
+
+
 def _validate_kind(memory_kind: str) -> Tuple[bool, str]:
     kind = (memory_kind or "").strip().lower()
     if kind in {"ideation", "experiment", "workflow"}:
@@ -87,8 +104,8 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
             requirements = str(item.get("requirements") or item.get("do_not_repeat_notes") or item.get("countermeasures") or "")
             goal = str(item.get("goal") or "")
             mem_type = str(item.get("type") or item.get("memory_type") or item.get("status") or "")
-            core_preview = core[:800].strip().replace("\n", " ")
-            req_preview = requirements[:800].strip().replace("\n", " ")
+            core_preview = _truncate_preview_text(core, 800)
+            req_preview = _truncate_preview_text(requirements, 800)
 
             lines = [
                 f"[{i}] 标题: {title}",
@@ -102,7 +119,7 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
             blocks.append("\n".join([x for x in lines if x]))
         elif kind == "workflow":
             title = str(item.get("title") or "(untitled)")
-            desc = str(item.get("description") or "")[:600].strip().replace("\n", " ")
+            desc = _truncate_preview_text(str(item.get("description") or ""), 600)
             pid = str(item.get("parent_ideation_id") or "") or "—"
             peid = str(item.get("parent_experiment_id") or "") or "—"
             lines = [
@@ -121,10 +138,10 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
             env_s = str(item.get("environment") or item.get("environment_constraints") or "")
             mem_status = str(item.get("status") or item.get("memory_type") or "")
 
-            prop_preview = proposal[:800].strip().replace("\n", " ")
-            data_preview = data_s[:800].strip().replace("\n", " ")
-            model_preview = model_s[:800].strip().replace("\n", " ")
-            env_preview = env_s[:800].strip().replace("\n", " ")
+            prop_preview = _truncate_preview_text(proposal, 800)
+            data_preview = _truncate_preview_text(data_s, 800)
+            model_preview = _truncate_preview_text(model_s, 800)
+            env_preview = _truncate_preview_text(env_s, 800)
 
             lines = [
                 f"[{i}] 实验上下文: {prop_preview}",

@@ -106,6 +106,10 @@ def decode_invite_code(code: str) -> str:
 
     Maintainer can generate:
       code = "evomem1:" + base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
+
+    Security note: this is **not** encryption or access control. Anyone who sees the code
+    can decode the URL (base64 is reversible). Use it only to hide the domain in UI or
+    deter casual scraping; do **not** rely on it to restrict who can reach the Hub.
     """
     code = code.strip()
     prefix = "evomem1:"

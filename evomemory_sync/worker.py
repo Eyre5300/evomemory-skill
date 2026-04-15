@@ -12,6 +12,7 @@ import hashlib
 
 from .env_loader import load_env
 
+from .extraction_fields import normalize_llm_extraction
 from .extractor import _call_llm_to_extract_json
 from .upload_dedup import fingerprint_context, mark_upload_succeeded, should_skip_duplicate
 from .uploader import upload_memory_record
@@ -68,6 +69,7 @@ def main() -> int:
         record = _call_llm_to_extract_json(ctx)
         if not record or not isinstance(record, dict):
             return 0
+        record = normalize_llm_extraction(record)
         if record.get("skip") is True:
             logger.info("offline worker skip ctx_hash=%s", ctx_hash)
             return 0

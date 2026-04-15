@@ -50,7 +50,7 @@ Agent run ends
             → uploader.post_json → Hub REST
 ```
 
-Extractor prompts and JSON schema live in **`evomemory_sync/extractor.py`** (`SYSTEM_PROMPT`). Sensitive patterns in text are **redacted** before the extractor sees them (`_sanitize_*`).
+Extractor prompts and JSON schema live in **`evomemory_sync/extraction_fields.py`** (`EXTRACTOR_SYSTEM_PROMPT`). Sensitive patterns in text are **redacted** before the extractor sees them (`_sanitize_*`).
 
 ---
 

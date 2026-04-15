@@ -1,0 +1,94 @@
+"""LLM extraction: canonical field names and normalization for ``uploader.json_to_*``.
+
+The Hub REST bodies are built only in ``uploader.json_to_*_payload``. The extractor LLM
+should emit keys that those functions read **first** in each branch, so we avoid a
+fourth parallel naming scheme. Aliases are folded here in one place (instead of growing
+only inside the uploader ``or`` chains).
+
+Mapping overview (LLM JSON → json_to_* input → Hub POST body):
+
+- **Ideation / failed**: ``proposal_summary``, ``trigger_conditions``, ``do_not_repeat_notes``,
+  ``retrieval_tags`` → flattened into Hub ``goal`` / ``type`` / ``title`` / ``core_idea`` / ``requirements``.
+- **Ideation / promising**: ``goal``, ``title``, ``core_idea``, ``why_promising``,
+  ``requirements``, ``validation_plan`` → Hub ideation fields.
+- **Experiment**: ``task_description``, ``data_summary``, ``model_strategy``,
+  ``environment_constraints``, optional parents → Hub experiment fields.
+- **Workflow**: ``title``, ``description``, ``prompt_templates``, ``tool_configuration``,
+  optional parents → Hub workflow fields.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+EXTRACTOR_SYSTEM_PROMPT = """You are EvoMemory's extraction model. Reply with ONE JSON object only (no markdown fences).
+
+Goal: classify the agent trace for a public research memory hub.
+
+Privacy: The user JSON is **already redacted** client-side before it reaches you. Do not echo secrets, tokens, paths, IPs, emails, or real names if any remain; use [REDACTED] inside string values only when needed. Output only one schema below.
+
+Choose exactly one output type:
+
+A) Skip — no research value or empty/chit-chat:
+{"skip": true}
+
+B) Failed ideation — tool errors, failed runs, dead ends. Use these exact keys:
+{"memory_type":"ideation","status":"failed","proposal_summary":"","trigger_conditions":"","do_not_repeat_notes":"","retrieval_tags":""}
+
+C) Promising ideation — shareable idea, no blocking errors. Keys:
+{"memory_type":"ideation","status":"promising","goal":"","title":"","core_idea":"","why_promising":"","requirements":"","validation_plan":""}
+
+D) Completed experiment — substantive successful run. Keys (task_description / data_summary match uploader input names):
+{"memory_type":"experiment","status":"completed","task_description":"","data_summary":"","model_strategy":"","environment_constraints":"","parent_ideation_id":null,"hardware_requirements":null,"software_dependencies":null}
+
+E) Workflow — reusable prompts + tool wiring (rare). Keys:
+{"memory_type":"workflow","title":"","description":"","prompt_templates":"","tool_configuration":"","parent_ideation_id":null,"parent_experiment_id":null}
+
+Rules: Prefer failed ideation when trace shows errors. Prefer experiment only on clear success. parent_* only if a Hub UUID is explicitly referenced.
+
+Examples (shape only; redact real secrets in your output):
+{"memory_type":"ideation","status":"failed","proposal_summary":"Tried X","trigger_conditions":"Tool error Y","do_not_repeat_notes":"Avoid Z","retrieval_tags":"x,y"}
+{"memory_type":"experiment","status":"completed","task_description":"Q","data_summary":"D","model_strategy":"M","environment_constraints":"E","parent_ideation_id":null,"hardware_requirements":null,"software_dependencies":null}
+"""
+
+
+def normalize_llm_extraction(raw: dict[str, Any]) -> dict[str, Any]:
+    """Copy known aliases onto canonical keys expected by ``uploader.json_to_*`` (non-destructive)."""
+    out = dict(raw)
+    mt = str(out.get("memory_type") or out.get("memory_kind") or out.get("type") or "").strip().lower()
+    if mt:
+        out["memory_type"] = mt
+
+    if mt == "experiment":
+        td = str(out.get("task_description") or "").strip()
+        if not td:
+            for alt in ("proposal_context", "research_task", "proposal_summary"):
+                v = out.get(alt)
+                if v is not None and str(v).strip():
+                    out["task_description"] = str(v).strip()
+                    break
+        ds = str(out.get("data_summary") or "").strip()
+        if not ds and out.get("data_strategy") is not None and str(out.get("data_strategy")).strip():
+            out["data_summary"] = str(out.get("data_strategy")).strip()
+
+    if mt == "workflow":
+        if not str(out.get("prompt_templates") or "").strip():
+            for alt in ("prompt_template", "prompts"):
+                v = out.get(alt)
+                if v is not None and str(v).strip():
+                    out["prompt_templates"] = str(v).strip()
+                    break
+        if not str(out.get("tool_configuration") or "").strip() and out.get("tools") is not None and str(out.get("tools")).strip():
+            out["tool_configuration"] = str(out.get("tools")).strip()
+
+    if mt == "ideation":
+        st = str(out.get("status") or "").strip().lower()
+        if st == "failed":
+            if not str(out.get("proposal_summary") or "").strip():
+                for alt in ("goal", "title", "core_idea"):
+                    v = out.get(alt)
+                    if v is not None and str(v).strip():
+                        out["proposal_summary"] = str(v).strip()
+                        break
+
+    return out

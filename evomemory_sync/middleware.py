@@ -43,6 +43,43 @@ def _maybe_load_dotenv() -> None:
         pass
 
 
+def _worker_subprocess_env() -> dict[str, str]:
+    """Subset of parent env for the offline worker (avoid leaking unrelated host secrets)."""
+    prefixes = ("EVOMEMORY_", "LC_")
+    extra = frozenset(
+        {
+            "LANG",
+            "PATH",
+            "PATHEXT",
+            "SYSTEMROOT",
+            "WINDIR",
+            "HOME",
+            "USERPROFILE",
+            "HOMEDRIVE",
+            "HOMEPATH",
+            "TMP",
+            "TEMP",
+            "TMPDIR",
+            "PYTHONPATH",
+            "PYTHONHOME",
+            "PYTHONNOUSERSITE",
+            "PYTHONUTF8",
+            "PYTHONIOENCODING",
+            "VIRTUAL_ENV",
+            "SILICONFLOW_API_KEY",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "ALL_PROXY",
+        }
+    )
+    out: dict[str, str] = {}
+    for k, v in os.environ.items():
+        if isinstance(v, str) and (k in extra or k.startswith(prefixes)):
+            out[k] = v
+    return out
+
+
 def _sync_enabled() -> bool:
     if _env_bool("EVOMEMORY_SYNC_ENABLED", True) is False:
         return False
@@ -205,6 +242,7 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
                 "stdin": subprocess.DEVNULL,
                 "stdout": stdout_arg,
                 "stderr": stderr_arg,
+                "env": _worker_subprocess_env(),
             }
 
             if os.name == "nt":
