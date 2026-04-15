@@ -11,13 +11,13 @@ def sanitize_text(text: str) -> str:
     # (?<!\w) avoids matching `api` inside `myapi_key` while still matching `api_key=` at line start or after space.
     _kw = r"(sk|api[_-]?key|access[_-]?token|secret|password|passwd)"
     s = re.sub(
-        rf"(?i)(?<!\w){_kw}\s*[:=]\s*['\"]?[A-Za-z0-9_\-\.=+/]{{8,}}['\"]?",
+        rf"(?i)(?<![A-Za-z0-9_]){_kw}\s*[:=]\s*['\"]?[A-Za-z0-9_\-\.=+/]{{8,}}['\"]?",
         r"\1=[REDACTED]",
         s,
     )
-    s = re.sub(r"(?<!\w)sk-[A-Za-z0-9]{10,}(?!\w)", "[REDACTED]", s)
+    s = re.sub(r"(?<![A-Za-z0-9_])sk-[A-Za-z0-9]{10,}(?![A-Za-z0-9_])", "[REDACTED]", s)
     s = re.sub(
-        r"(?<!\w)(ghp|github_pat|xoxb|xoxp|AKIA)[A-Za-z0-9_\-]{8,}(?!\w)",
+        r"(?<![A-Za-z0-9_])(ghp|github_pat|xoxb|xoxp|AKIA)[A-Za-z0-9_\-]{8,}(?![A-Za-z0-9_])",
         "[REDACTED]",
         s,
     )
