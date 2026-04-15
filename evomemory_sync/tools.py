@@ -182,5 +182,5 @@ def search_evomemory(query: str, memory_kind: str) -> str:
         # 保持 Observation 紧凑：最多展示 5 条
         return _format_results(kind, results, max_items=5)
     except Exception as e:
-        return f"检索失败：{type(e).__name__}: {e}。建议检查 `EVOMEMORY_API_BASE_URL`、网络连接以及（如需向量化）Embedding 相关环境变量。"
+        return f"检索失败：{type(e).__name__}: {e}。建议检查 `EVOMEMORY_API_BASE_URL` 与网络连接。"
 

@@ -14,7 +14,7 @@ This repository is two things:
 1. **Python package `evomemory_sync`** — `EvoMemorySyncMiddleware` runs **after each agent invocation**, uses an LLM to turn the message trace into structured JSON, then **POSTs silently** to the Hub (when `EVOMEMORY_API_TOKEN` and extractor settings are set).
 2. **CLI helpers** — `scripts/setup.py` (token + base URL) and `scripts/search.py` (semantic search).
 
-**Default public Hub:** `https://evomem.club` (or `http://evomem.club` — see `evomemory_sync.uploader` URL handling).
+**Default public Hub:** `https://evomem.club`（客户端直接使用该 HTTPS 地址，无 HTTP / IP 自动降级）。
 
 ## First-time setup (after `/install-skill` or git clone)
 
@@ -74,7 +74,7 @@ python setup.py wizard
 
 Writes `.env` with `EVOMEMORY_API_BASE_URL` and optionally `EVOMEMORY_API_TOKEN`.
 
-默认公有 Hub 的 **存储形式** 为 `https://evomem.club`（`EVOMEMORY_API_BASE_URL`）。备案/测试阶段，脚本与同步客户端会按顺序尝试 **HTTPS → HTTP → 备用 IP**，具体见 `references/VPS_INTEGRATION.md`；自建 Hub 请填写你的域名或 `http://localhost:…`。
+默认公有 Hub 的 **存储形式** 为 `https://evomem.club`（`EVOMEMORY_API_BASE_URL`）。脚本与同步客户端使用规范 **HTTPS 直连**（无 HTTP / 备用 IP 自动降级）；自建 Hub 请填写你的域名或 `http://localhost:…`。历史备案阶段的探测说明见 `references/VPS_INTEGRATION.md`（默认已关闭）。
 
 ### 2. Configure the extractor (middleware)
 
@@ -153,7 +153,7 @@ from evomemory_sync.agent_tools import (
 ```
 
 - 使用与全 skill 一致的 Hub 配置：**`EVOMEMORY_API_BASE_URL`** + **`EVOMEMORY_API_TOKEN`**（由 `scripts/setup.py` 写入 `.env`）。可选别名：**`EVOMEMORY_API_URL`**（覆盖 base）、**`EVOMEMORY_AGENT_TOKEN`**（在未设置 `EVOMEMORY_API_TOKEN` 时作为 Bearer）。
-- 若已配置与 `evomemory_sync.uploader` 相同的 embedding 环境变量，归档请求会自动附带 `embedding`，行为与中间件上传一致。
+- 归档与中间件上传均由 **Hub 端完成向量化**，无需配置客户端 embedding。
 - 将 `AGENT_SYSTEM_PROMPT_EXTENSION` 拼进 Agent 系统提示词，可强制任务结束后的反思与归档流程。
 
 ## How the middleware decides M_I vs M_E
@@ -168,7 +168,7 @@ The LLM must output JSON only: either `memory_type: "ideation"` (failed or promi
 
 ## Hub field reference
 
-See `references/CONFIG.md` for env vars, embedding buckets, and REST endpoints.
+See `references/CONFIG.md` for env vars and REST endpoints.
 
 ## Managing your shares on the Hub (delete / hide)
 

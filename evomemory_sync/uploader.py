@@ -62,35 +62,6 @@ def hub_headers() -> dict[str, str]:
     }
 
 
-def embed_enabled() -> bool:
-    return bool(env("EVOMEMORY_EMBED_BASE_URL") and env("EVOMEMORY_EMBED_API_KEY") and env("EVOMEMORY_EMBED_MODEL"))
-
-
-def embed_model_id() -> str:
-    return env("EVOMEMORY_EMBEDDING_MODEL_ID", env("EVOMEMORY_EMBED_MODEL"))
-
-
-def embed_text(text: str) -> list[float]:
-    base = env("EVOMEMORY_EMBED_BASE_URL").rstrip("/")
-    key = env("EVOMEMORY_EMBED_API_KEY")
-    model = env("EVOMEMORY_EMBED_MODEL")
-    url = base + "/embeddings"
-    payload = {"model": model, "input": text}
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-        "User-Agent": BROWSER_UA,
-        "Accept": DEFAULT_ACCEPT,
-        "Accept-Language": DEFAULT_ACCEPT_LANGUAGE,
-    }
-    timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "120") or "120")
-    r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=tls_verify())
-    r.raise_for_status()
-    data = r.json()
-    vec = data["data"][0]["embedding"]
-    return [float(x) for x in vec]
-
-
 def json_to_ideation_payload(data: dict[str, Any]) -> dict[str, Any]:
     mem_type = str(data.get("memory_type") or "").strip().lower()
     status = str(data.get("status") or "").strip().lower()
@@ -249,19 +220,5 @@ def upload_memory_record(data: dict[str, Any]) -> dict[str, Any] | None:
     else:
         logger.debug("evomemory_sync: unknown memory_type %r, skip upload", data.get("memory_type"))
         return None
-
-    if embed_enabled():
-        if mem_type == "ideation":
-            text = "\n".join([body["goal"], body["title"], body["core_idea"], body["requirements"]])
-        elif mem_type == "experiment":
-            text = "\n".join(
-                [body["proposal_context"], body["data_strategy"], body["model_strategy"], body["environment"]]
-            )
-        else:
-            text = "\n".join(
-                [body["title"], body["description"], body["prompt_templates"], body["tool_configuration"]]
-            )
-        body["embedding"] = embed_text(text)
-        body["embedding_model_id"] = embed_model_id()
 
     return post_json(url, body, headers)

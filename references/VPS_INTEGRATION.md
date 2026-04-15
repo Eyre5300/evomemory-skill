@@ -6,20 +6,14 @@
 
 | 变量 | 含义 |
 |------|------|
-| `EVOMEMORY_API_BASE_URL` | Hub **规范**根地址（无尾斜杠），默认写入 **`https://evomem.club`**。备案/测试阶段运行时可能自动改用可连通的 HTTP 或备用 IP，但 `.env` 中仍保存 HTTPS 规范域名。 |
+| `EVOMEMORY_API_BASE_URL` | Hub **规范**根地址（无尾斜杠），默认写入 **`https://evomem.club`**。生产环境客户端**直连**该地址（无 HTTP / 备用 IP 自动降级）。 |
 | `EVOMEMORY_API_TOKEN` | 登录/注册得到的 JWT（`access_token`），与网站一致。 |
 
-### 备案 / 测试阶段的降级（上线后可关闭）
+### 历史：备案 / 测试阶段的 URL 探测（默认已关闭）
 
-实现位于 `evomemory_sync/hub_url.py`：
+实现位于 `evomemory_sync/hub_url.py`。当前 **`ENABLE_HUB_URL_TESTING_FALLBACKS=false`**（默认），`build_hub_candidate_urls` 仅返回规范地址，`setup.py share` / 运行时客户端不再尝试 HTTP 或备用 IP。
 
-- **`ENABLE_HUB_URL_TESTING_FALLBACKS`**：为 `True` 时启用探测与多源重试；正式上线后可改为 `False` 并删去 IP 等降级分支。
-- **运行时解析**（`resolve_working_hub_base_url_cached`）：对已配置的规范 URL，按顺序 **探测** 是否可达：`https://主机` → `http://主机` →（仅当主机为 `evomem.club` 时）`https://8.130.132.246` → `http://8.130.132.246`。端口与路径会尽量沿用配置（公网默认无路径）。
-- **自建域名**：若也需要在测试阶段走备用 IP，可设置环境变量 **`EVOMEMORY_HUB_IP_FALLBACK=1`**（或 `true`/`yes`），此时会追加 IP 候选（仍受 `ENABLE_HUB_URL_TESTING_FALLBACKS` 控制）。
-- **备用 IP**：默认 **`8.130.132.246`**，可通过 **`EVOMEMORY_HUB_FALLBACK_IP`** 覆盖。
-- **探测超时**：**`EVOMEMORY_HUB_PROBE_TIMEOUT_SECONDS`**（默认 `5`）。
-
-`scripts/setup.py` 的 **share / wizard（分享）** 在注册/登录时会对 **同一候选列表** 依次发起请求，直到拿到 `access_token`；写入 `.env` 的仍是 **规范 HTTPS** 的 `EVOMEMORY_API_BASE_URL`。
+若极少数自建环境仍需旧行为，可将源码中该常量改为 `True`（不推荐用于公网 Hub）。
 
 ## 认证（与网站同源）
 
@@ -40,7 +34,7 @@ vps_bundle 中 `memory_router` 挂载在应用根路径（无 `/api` 前缀）�
 
 - **实验 → 构思**：上传实验时 JSON 可带 `parent_ideation_id`（需指向已存在且**公开**的构思）。`evomemory_sync.uploader.json_to_experiment_payload` 与 `agent_tools.share_successful_experiment` 已支持该字段。
 - **工作流 → 构思 / 实验**：`POST /memory/workflow/upload` 可带 `parent_ideation_id`、`parent_experiment_id`（实验须为**当前用户**所有且父构思校验通过）。Extractor 在 `memory_type: "workflow"` 时由 `json_to_workflow_payload` 映射；Agent 可调用 **`share_workflow`**。
-- **检索**：构思 / 实验 / 工作流均为向量检索：`POST /memory/ideation/search`、`POST /memory/experiment/search`、`POST /memory/workflow/search`（`QueryRequest`：`query_text` 或 `query_embedding`）。skill 的 `search_evomemory(..., "workflow")` 与 **`python scripts/search.py workflow "..."`** 与此一致。
+- **检索**：构思 / 实验 / 工作流均为向量检索：`POST /memory/ideation/search`、`POST /memory/experiment/search`、`POST /memory/workflow/search`（`QueryRequest` 支持 `query_text`；API 仍兼容 `query_embedding`，skill 只发 `query_text`）。`search_evomemory(..., "workflow")` 与 **`python scripts/search.py workflow "..."`** 与此一致。
 - **仅改父级链接**：`PATCH /memory/experiment/{id}/parent`（body: `parent_ideation_id`）、`PATCH /memory/workflow/{id}/parents`（可只传要改的字段，服务端会与其余字段合并）。skill 提供 **`patch_experiment_parent_link` / `patch_workflow_parent_links`** 与 CLI **`scripts/patch_links.py`**。
 
 ## 自检

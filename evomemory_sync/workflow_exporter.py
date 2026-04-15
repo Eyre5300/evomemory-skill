@@ -2,8 +2,8 @@
 将标准化的 ``EvoWorkflow`` 映射到 Hub ``/memory/workflow/upload`` 的请求体并上传。
 
 环境变量与 ``evomemory_sync.agent_tools`` 一致：``EVOMEMORY_API_URL``（可选，覆盖 base）、
-``EVOMEMORY_API_BASE_URL``、``EVOMEMORY_API_TOKEN`` / ``EVOMEMORY_AGENT_TOKEN``；
-若配置了 ``EVOMEMORY_EMBED_*``，会自动附加 ``embedding`` / ``embedding_model_id``。
+``EVOMEMORY_API_BASE_URL``、``EVOMEMORY_API_TOKEN`` / ``EVOMEMORY_AGENT_TOKEN``。
+Hub 端负责向量化，无需客户端 embedding 配置。
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 import httpx
 
-from .agent_tools import _base_url, _maybe_add_workflow_embedding, get_headers
+from .agent_tools import _base_url, get_headers
 from .uploader import tls_verify
 from .workflow_schema import EvoWorkflow
 
@@ -54,7 +54,6 @@ async def export_and_upload_workflow(
         }
     )
 
-    payload = await _maybe_add_workflow_embedding(payload)
     base = _base_url()
 
     async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:

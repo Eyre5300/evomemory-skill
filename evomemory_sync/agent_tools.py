@@ -14,13 +14,11 @@ Optional aliases (e.g. dedicated agent keys):
 - ``EVOMEMORY_API_URL`` — if set, overrides base URL (takes precedence over ``EVOMEMORY_API_BASE_URL``).
 - ``EVOMEMORY_AGENT_TOKEN`` — if ``EVOMEMORY_API_TOKEN`` is empty, this is used as the bearer token.
 
-When embedding env vars are configured (``EVOMEMORY_EMBED_*``), uploads include ``embedding`` + ``embedding_model_id``,
-matching `evomemory_sync.uploader.upload_memory_record` behavior.
+Embeddings are computed on the Hub; uploads do not send client-side vectors.
 """
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Optional
 
 import httpx
@@ -30,9 +28,6 @@ from .uploader import (
     BROWSER_UA,
     DEFAULT_ACCEPT,
     DEFAULT_ACCEPT_LANGUAGE,
-    embed_enabled,
-    embed_model_id,
-    embed_text,
     env,
     get_base_url,
     tls_verify,
@@ -74,55 +69,6 @@ def _strip_none(d: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
 
 
-async def _maybe_add_ideation_embedding(body: dict[str, Any]) -> dict[str, Any]:
-    if not embed_enabled():
-        return body
-    text = "\n".join(
-        [body["goal"], body["title"], body["core_idea"], body["requirements"]]
-    )
-    vec = await asyncio.to_thread(embed_text, text)
-    out = dict(body)
-    out["embedding"] = vec
-    out["embedding_model_id"] = embed_model_id()
-    return out
-
-
-async def _maybe_add_experiment_embedding(body: dict[str, Any]) -> dict[str, Any]:
-    if not embed_enabled():
-        return body
-    text = "\n".join(
-        [
-            body["proposal_context"],
-            body["data_strategy"],
-            body["model_strategy"],
-            body["environment"],
-        ]
-    )
-    vec = await asyncio.to_thread(embed_text, text)
-    out = dict(body)
-    out["embedding"] = vec
-    out["embedding_model_id"] = embed_model_id()
-    return out
-
-
-async def _maybe_add_workflow_embedding(body: dict[str, Any]) -> dict[str, Any]:
-    if not embed_enabled():
-        return body
-    text = "\n".join(
-        [
-            body["title"],
-            body["description"],
-            body["prompt_templates"],
-            body["tool_configuration"],
-        ]
-    )
-    vec = await asyncio.to_thread(embed_text, text)
-    out = dict(body)
-    out["embedding"] = vec
-    out["embedding_model_id"] = embed_model_id()
-    return out
-
-
 async def share_failed_ideation(
     goal: str,
     title: str,
@@ -139,7 +85,6 @@ async def share_failed_ideation(
         "core_idea": core_idea,
         "requirements": requirements,
     }
-    payload = await _maybe_add_ideation_embedding(payload)
     base = _base_url()
     async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
         response = await client.post(
@@ -174,7 +119,6 @@ async def share_successful_experiment(
             "parent_ideation_id": parent_ideation_id,
         }
     )
-    payload = await _maybe_add_experiment_embedding(payload)
     base = _base_url()
     async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
         response = await client.post(
@@ -205,7 +149,6 @@ async def share_workflow(
             "parent_experiment_id": parent_experiment_id,
         }
     )
-    payload = await _maybe_add_workflow_embedding(payload)
     base = _base_url()
     async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
         response = await client.post(

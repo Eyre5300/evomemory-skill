@@ -11,8 +11,6 @@ from typing import Any
 import requests
 import urllib3
 
-from .uploader import tls_verify
-
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
@@ -40,6 +38,11 @@ def _env_bool(name: str, default: bool) -> bool:
     if raw is None or not str(raw).strip():
         return default
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _tls_verify() -> bool:
+    """Match ``evomemory_sync.uploader.tls_verify`` (kept local so file-level tests can load this module)."""
+    return not _env_bool("EVOMEMORY_INSECURE", False)
 
 
 def _sanitize_text(text: str) -> str:
@@ -188,7 +191,7 @@ def _call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:
         }
         if use_json_format:
             payload["response_format"] = {"type": "json_object"}
-        r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=tls_verify())
+        r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=_tls_verify())
         r.raise_for_status()
         data = r.json()
         choice = data["choices"][0]["message"]

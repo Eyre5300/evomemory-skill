@@ -1,19 +1,11 @@
 """
-Hub base URL normalization and testing-phase connectivity fallbacks.
+Hub base URL normalization for clients (skill / CLI).
 
-Stored form (``EVOMEMORY_API_BASE_URL``) is always the **canonical HTTPS** URL for the
-configured host (except ``localhost`` / loopback, where the caller's scheme is kept).
+``EVOMEMORY_API_BASE_URL`` is stored as the **canonical** origin (HTTPS for public hosts;
+``localhost`` / loopback may keep ``http`` for local dev — see :func:`normalize_hub_base_url`).
 
-When ``ENABLE_HUB_URL_TESTING_FALLBACKS`` is True (备案 / 测试阶段), runtime clients may
-resolve a **working** origin by probing in order:
-
-1. ``https://<host>`` (same port/path as configured)
-2. ``http://<host>``
-3. ``https://<fallback-ip>`` then ``http://<fallback-ip>`` (only for public Hub host
-   ``evomem.club`` by default — see ``_should_use_ip_fallback``)
-
-**Remove** ``ENABLE_HUB_URL_TESTING_FALLBACKS`` (set to False) and delete IP / multi-step
-logic after public launch, per product decision.
+Production uses that URL only (no HTTP downgrade or alternate-IP probing). Optional
+``ENABLE_HUB_URL_TESTING_FALLBACKS`` remains for rare self-hosted debugging but defaults off.
 """
 
 from __future__ import annotations
@@ -27,9 +19,9 @@ import requests
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Testing / 备案阶段：上线后改为 False 并删去 IP 降级等相关分支
+# Set True only for legacy self-hosted debugging (HTTPS→HTTP→IP probing).
 # ---------------------------------------------------------------------------
-ENABLE_HUB_URL_TESTING_FALLBACKS = True
+ENABLE_HUB_URL_TESTING_FALLBACKS = False
 
 DEFAULT_PUBLIC_HUB = "https://evomem.club"
 TESTING_FALLBACK_IP = "8.130.132.246"
@@ -91,6 +83,10 @@ def build_hub_candidate_urls(normalized_base: str) -> list[str]:
     Ordered URLs to try for the same logical Hub (HTTPS first, then HTTP, then IP fallbacks).
     ``normalized_base`` should be the output of :func:`normalize_hub_base_url`.
     """
+    base = (normalized_base or "").strip().rstrip("/")
+    if not ENABLE_HUB_URL_TESTING_FALLBACKS:
+        return [base] if base else []
+
     parsed = urlparse(normalized_base)
     host = (parsed.hostname or "").lower()
     netloc = parsed.netloc

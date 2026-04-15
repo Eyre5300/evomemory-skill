@@ -7,7 +7,7 @@ Usage:
     python search.py ideation "..." --top-k 20 --min-similarity 0.35
 
 Env defaults (optional):
-    EVOMEMORY_API_BASE_URL (canonical default: https://evomem.club; runtime may probe HTTP / IP fallbacks)
+    EVOMEMORY_API_BASE_URL (canonical default: https://evomem.club)
     kind=workflow uses POST /memory/workflow/search (vector similarity, same as ideation/experiment).
     EVOMEMORY_SEARCH_TOP_K, EVOMEMORY_SEARCH_MIN_SIMILARITY
 """
@@ -93,30 +93,6 @@ def get_headers() -> dict[str, str]:
     return {}
 
 
-def embed_enabled() -> bool:
-    return bool(env("EVOMEMORY_EMBED_BASE_URL") and env("EVOMEMORY_EMBED_API_KEY") and env("EVOMEMORY_EMBED_MODEL"))
-
-
-def embed_model_id() -> str:
-    return env("EVOMEMORY_EMBEDDING_MODEL_ID", env("EVOMEMORY_EMBED_MODEL"))
-
-
-def embed_text(text: str) -> List[float]:
-    base = env("EVOMEMORY_EMBED_BASE_URL").rstrip("/")
-    key = env("EVOMEMORY_EMBED_API_KEY")
-    model = env("EVOMEMORY_EMBED_MODEL")
-    url = base + "/embeddings"
-    payload = {"model": model, "input": text}
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
-    with httpx.Client(timeout=timeout) as client:
-        r = client.post(url, json=payload, headers=headers)
-        r.raise_for_status()
-        data = r.json()
-    vec = data["data"][0]["embedding"]
-    return [float(x) for x in vec]
-
-
 def default_top_k() -> int:
     raw = env("EVOMEMORY_SEARCH_TOP_K", "10")
     try:
@@ -145,12 +121,7 @@ def search(kind: str, query: str, top_k: int, min_similarity: float, insecure: b
         "min_similarity": min_similarity,
     }
 
-    if embed_enabled():
-        print(f"Generating embedding with {env('EVOMEMORY_EMBED_MODEL')}...")
-        payload["query_embedding"] = embed_text(query)
-        payload["embedding_model_id"] = embed_model_id()
-    else:
-        payload["query_text"] = query
+    payload["query_text"] = query
 
     with httpx.Client(timeout=timeout, verify=not insecure) as client:
         try:

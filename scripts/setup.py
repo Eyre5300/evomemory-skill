@@ -31,7 +31,7 @@ except Exception:
 
     _SETUP_DEFAULT_HUB = "https://evomem.club"
     _SETUP_FALLBACK_IP = "8.130.132.246"
-    _SETUP_ENABLE_FALLBACKS = True
+    _SETUP_ENABLE_FALLBACKS = False
 
     def normalize_hub_base_url(raw: str, *, default: str = _SETUP_DEFAULT_HUB) -> str:
         """Fallback: keep in sync with evomemory_sync.hub_url.normalize_hub_base_url."""
@@ -52,6 +52,9 @@ except Exception:
 
     def build_hub_candidate_urls(normalized_base: str) -> list[str]:
         """Fallback: keep in sync with evomemory_sync.hub_url.build_hub_candidate_urls."""
+        base = (normalized_base or "").strip().rstrip("/")
+        if not _SETUP_ENABLE_FALLBACKS:
+            return [base] if base else []
         parsed = urlparse(normalized_base)
         host = (parsed.hostname or "").lower()
         netloc = parsed.netloc

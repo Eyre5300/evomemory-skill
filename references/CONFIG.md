@@ -58,10 +58,6 @@ This will ask:
 | `EVOMEMORY_SETUP_PASSWORD` | No | - | Used with `EVOMEMORY_SETUP_EMAIL` for non-interactive register/login |
 | `EVOMEMORY_AGENT_TOKEN` | No | - | Optional bearer token used only if `EVOMEMORY_API_TOKEN` is unset (e.g. dedicated agent key) |
 | `EVOMEMORY_API_TIMEOUT_SECONDS` | No | 30 | Request timeout |
-| `EVOMEMORY_EMBED_BASE_URL` | No | - | Embedding API base URL |
-| `EVOMEMORY_EMBED_API_KEY` | No | - | Embedding API key |
-| `EVOMEMORY_EMBED_MODEL` | No | - | Embedding model name |
-| `EVOMEMORY_EMBEDDING_MODEL_ID` | No | Same as model | Model bucket identifier |
 | `EVOMEMORY_SEARCH_TOP_K` | No | 10 | Default for `scripts/search.py` `--top-k` (1–100) |
 | `EVOMEMORY_SEARCH_MIN_SIMILARITY` | No | 0 | Default for `scripts/search.py` `--min-similarity` (0–1) |
 | `EVOMEMORY_SYNC_ENABLED` | No | `true` | Set `0`/`false` to disable `EvoMemorySyncMiddleware` |
@@ -76,55 +72,12 @@ When `EvoMemorySyncMiddleware` is registered on the agent and `EVOMEMORY_API_TOK
 
 ## Semantic search (`search.py`)
 
-Hub 使用 pgvector 按**相似度**排序，返回最相近的前 `top_k` 条（最大 100），可用 `min_similarity` 过滤弱相关结果。未配置客户端 embedding 时由服务端对 `query_text` 做向量化；配置了 `EVOMEMORY_EMBED_*` 时由客户端生成 `query_embedding` 并需指定 `embedding_model_id`（与上传时同桶）。
-
-## Client-Side Embedding
-
-### Why?
-
-Different embedding models produce incompatible vectors. To ensure accurate similarity search, EvoMemory uses "same-model buckets":
-
-- When you push, your `embedding_model_id` is stored with the memory
-- When you search, only memories with matching `embedding_model_id` are compared
-
-### Configuration Examples
-
-**OpenAI:**
-```env
-EVOMEMORY_EMBED_BASE_URL=https://api.openai.com/v1
-EVOMEMORY_EMBED_API_KEY=sk-...
-EVOMEMORY_EMBED_MODEL=text-embedding-3-small
-EVOMEMORY_EMBEDDING_MODEL_ID=openai-3-small
-```
-
-**Zhipu (智谱):**
-```env
-EVOMEMORY_EMBED_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-EVOMEMORY_EMBED_API_KEY=your-api-key
-EVOMEMORY_EMBED_MODEL=embedding-2
-EVOMEMORY_EMBEDDING_MODEL_ID=zhipu-embedding-2
-```
-
-**DeepSeek:**
-```env
-EVOMEMORY_EMBED_BASE_URL=https://api.deepseek.com/v1
-EVOMEMORY_EMBED_API_KEY=sk-...
-EVOMEMORY_EMBED_MODEL=deepseek-embedding
-EVOMEMORY_EMBEDDING_MODEL_ID=deepseek-embed
-```
-
-**Local/Self-hosted (vLLM, ollama, etc.):**
-```env
-EVOMEMORY_EMBED_BASE_URL=http://localhost:8080/v1
-EVOMEMORY_EMBED_API_KEY=dummy
-EVOMEMORY_EMBED_MODEL=bge-large-zh
-EVOMEMORY_EMBEDDING_MODEL_ID=bge-large-zh-local
-```
+Hub 使用 pgvector 按**相似度**排序，返回最相近的前 `top_k` 条（最大 100），可用 `min_similarity` 过滤弱相关结果。Skill 与 CLI 只发送 `query_text`，**向量化在 Hub 端完成**（与 Web 检索一致）。
 
 ## Memory Keywords (Hub API)
 
-- **Ideation:** `goal`, `type` (promising/failed), `title`, `core_idea`, `requirements`; optional `embedding`, `embedding_model_id`.
-- **Experiment:** `proposal_context`, `data_strategy`, `model_strategy`, `environment`; optional `embedding`, `embedding_model_id`.
+- **Ideation:** `goal`, `type` (promising/failed), `title`, `core_idea`, `requirements`（Hub 可接受可选 `embedding` / `embedding_model_id`，skill 不再发送）。
+- **Experiment:** `proposal_context`, `data_strategy`, `model_strategy`, `environment`（同上）。
 
 ## API Endpoints
 
@@ -191,9 +144,8 @@ The hub limits requests per user. Wait a moment and retry.
 
 ### Search returns no results
 
-- Check if `embedding_model_id` matches existing memories
-- Try without client-side embedding (server will use its own)
-- The hub might be empty for your model bucket
+- Hub 可能尚无与查询语义相近的公开记忆；可换关键词或降低 `min_similarity`。
+- 若 Hub 曾更换嵌入模型，旧数据需运维侧 backfill（见下文 maintenance）。
 
 ### Workflow search errors or empty similarity (server-side)
 

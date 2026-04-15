@@ -125,11 +125,7 @@ EVOMEMORY_SYNC_ENABLED=false
 
 If `EVOMEMORY_API_TOKEN` is missing, the middleware **does nothing** (logged at debug).
 
-### 3) Client-side embeddings (optional, recommended for consistent buckets)
-
-If `EVOMEMORY_EMBED_*` is configured, **`upload_memory_record`** and **`agent_tools`** attach `embedding` + `embedding_model_id` the same way — aligned with Hub “model bucket” rules. See **`references/CONFIG.md`**.
-
-### 4) Tool / search tuning (optional)
+### 3) Tool / search tuning (optional)
 
 `search_evomemory` and `scripts/search.py` respect:
 
