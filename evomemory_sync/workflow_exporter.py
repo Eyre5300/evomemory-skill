@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 import httpx
 
-from .agent_tools import _base_url, get_headers
+from .agent_tools import _base_url, headers_or_error
 from .uploader import tls_verify
 from .workflow_schema import EvoWorkflow
 
@@ -54,13 +54,17 @@ async def export_and_upload_workflow(
         }
     )
 
+    headers, err = headers_or_error()
+    if err:
+        return {"error": err}
+
     base = _base_url()
 
     async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
         response = await client.post(
             f"{base}/memory/workflow/upload",
             json=payload,
-            headers=get_headers(),
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()

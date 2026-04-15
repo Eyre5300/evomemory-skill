@@ -11,6 +11,8 @@ from typing import Any
 import requests
 import urllib3
 
+from .sanitize import sanitize_context as _sanitize_context
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
@@ -45,44 +47,6 @@ def _tls_verify() -> bool:
     return not _env_bool("EVOMEMORY_INSECURE", False)
 
 
-def _sanitize_text(text: str) -> str:
-    s = text
-    # Secrets / tokens / API keys (generic and provider-specific).
-    # Use (?<![A-Za-z0-9_]) instead of \b so keys like `api_key=` still match after underscores.
-    _kw = r"(sk|api[_-]?key|access[_-]?token|secret|password|passwd)"
-    s = re.sub(
-        rf"(?i)(?<![A-Za-z0-9_]){_kw}\s*[:=]\s*['\"]?[A-Za-z0-9_\-\.=+/]{{8,}}['\"]?",
-        r"\1=[REDACTED]",
-        s,
-    )
-    s = re.sub(r"(?<![A-Za-z0-9_])sk-[A-Za-z0-9]{10,}(?![A-Za-z0-9_])", "[REDACTED]", s)
-    s = re.sub(
-        r"(?<![A-Za-z0-9_])(ghp|github_pat|xoxb|xoxp|AKIA)[A-Za-z0-9_\-]{8,}(?![A-Za-z0-9_])",
-        "[REDACTED]",
-        s,
-    )
-    # File paths (Windows + Unix-like absolute paths)
-    s = re.sub(r"[A-Za-z]:\\(?:[^\\\s\"']+\\)*[^\\\s\"']*", "[REDACTED]", s)
-    s = re.sub(r"/(?:Users|home|root|var|tmp|private|opt|etc)/[^\s\"']+", "[REDACTED]", s)
-    # IPv4
-    s = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[REDACTED]", s)
-    # MAC
-    s = re.sub(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b", "[REDACTED]", s)
-    # Email
-    s = re.sub(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b", "[REDACTED]", s)
-    return s
-
-
-def _sanitize_context(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {k: _sanitize_context(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_sanitize_context(v) for v in value]
-    if isinstance(value, str):
-        return _sanitize_text(value)
-    return value
-
-
 def _parse_json_object(text: str) -> dict[str, Any]:
     text = text.strip()
     fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
@@ -95,9 +59,7 @@ SYSTEM_PROMPT = """You are EvoMemory's extraction model. Reply with ONE JSON obj
 
 Goal: classify the agent trace for a public research memory hub.
 
-Sanitization (mandatory before you write JSON):
-- Redact secrets, tokens, passwords, local absolute paths, IPs, MACs, emails, real names → use exactly [REDACTED] inside string values.
-- Keep valid JSON keys/shapes below; never leak raw credentials.
+Privacy: The user JSON is **already redacted** client-side before it reaches you. Do not echo secrets, tokens, paths, IPs, emails, or real names if any remain; use [REDACTED] inside string values only when needed. Output only the schema below.
 
 Choose exactly one output type:
 

@@ -15,6 +15,10 @@ Optional aliases (e.g. dedicated agent keys):
 - ``EVOMEMORY_AGENT_TOKEN`` — if ``EVOMEMORY_API_TOKEN`` is empty, this is used as the bearer token.
 
 Embeddings are computed on the Hub; uploads do not send client-side vectors.
+
+**Misconfiguration:** when the Hub token is missing, ``share_*`` / ``patch_*`` return
+``{"error": "<message>"}`` instead of raising, so LangGraph agents are not aborted mid-run.
+Use :func:`headers_or_error` in new code; :func:`get_headers` remains for scripts and raises if unset.
 """
 
 from __future__ import annotations
@@ -35,6 +39,11 @@ except Exception:
 _DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 _UNSET = object()
 
+_MISSING_TOKEN_MSG = (
+    "EvoMemory Hub: set EVOMEMORY_API_TOKEN or EVOMEMORY_AGENT_TOKEN "
+    "(e.g. run `python scripts/setup.py share` from the skill repository)."
+)
+
 
 def _base_url() -> str:
     override = env("EVOMEMORY_API_URL")
@@ -43,20 +52,26 @@ def _base_url() -> str:
     return get_base_url()
 
 
-def get_headers() -> dict[str, str]:
-    """Bearer + browser-like headers consistent with `hub_headers()` / search tools."""
+def headers_or_error() -> tuple[dict[str, str] | None, str | None]:
+    """Return ``(headers, None)`` or ``(None, error_message)`` if no bearer token is configured."""
     token = env("EVOMEMORY_API_TOKEN") or env("EVOMEMORY_AGENT_TOKEN")
     if not token:
-        raise RuntimeError(
-            "Set EVOMEMORY_API_TOKEN (or EVOMEMORY_AGENT_TOKEN) for agent archive tools."
-        )
+        return None, _MISSING_TOKEN_MSG
     return {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
         "User-Agent": BROWSER_UA,
         "Accept": DEFAULT_ACCEPT,
         "Accept-Language": DEFAULT_ACCEPT_LANGUAGE,
-    }
+    }, None
+
+
+def get_headers() -> dict[str, str]:
+    """Same headers as Hub uploads; raises ``RuntimeError`` if token missing (CLI / internal use)."""
+    h, err = headers_or_error()
+    if err:
+        raise RuntimeError(err)
+    return h
 
 
 def _strip_none(d: dict[str, Any]) -> dict[str, Any]:
@@ -71,7 +86,11 @@ async def share_failed_ideation(
 ) -> dict[str, Any]:
     """
     供 Agent 调用的工具：当任务彻底失败、走入死胡同或遇到无法解决的 Bug 时调用此函数，将失败经验归档。
+    若未配置 token，返回 ``{"error": "..."}`` 而非抛错。
     """
+    headers, err = headers_or_error()
+    if err:
+        return {"error": err}
     payload: dict[str, Any] = {
         "type": "failed",
         "goal": goal,
@@ -84,7 +103,7 @@ async def share_failed_ideation(
         response = await client.post(
             f"{base}/memory/ideation/upload",
             json=payload,
-            headers=get_headers(),
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
@@ -101,7 +120,11 @@ async def share_successful_experiment(
 ) -> dict[str, Any]:
     """
     供 Agent 调用的工具：当任务顺利完成且具有复现价值时调用此函数，将实验配置归档。
+    若未配置 token，返回 ``{"error": "..."}``。
     """
+    headers, err = headers_or_error()
+    if err:
+        return {"error": err}
     payload = _strip_none(
         {
             "proposal_context": proposal_context,
@@ -118,7 +141,7 @@ async def share_successful_experiment(
         response = await client.post(
             f"{base}/memory/experiment/upload",
             json=payload,
-            headers=get_headers(),
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
@@ -133,6 +156,9 @@ async def share_workflow(
     parent_experiment_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Archive a reusable workflow (prompts + tool configuration) to the Hub."""
+    headers, err = headers_or_error()
+    if err:
+        return {"error": err}
     payload = _strip_none(
         {
             "title": title,
@@ -148,7 +174,7 @@ async def share_workflow(
         response = await client.post(
             f"{base}/memory/workflow/upload",
             json=payload,
-            headers=get_headers(),
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
@@ -165,12 +191,15 @@ async def patch_experiment_parent_link(
     """
     if parent_ideation_id is _UNSET:
         raise ValueError("parent_ideation_id is required (use None to clear the link)")
+    headers, err = headers_or_error()
+    if err:
+        return {"error": err}
     base = _base_url()
     async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
         response = await client.patch(
             f"{base}/memory/experiment/{memory_id}/parent",
             json={"parent_ideation_id": parent_ideation_id},
-            headers=get_headers(),
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
@@ -193,12 +222,15 @@ async def patch_workflow_parent_links(
         body["parent_experiment_id"] = parent_experiment_id
     if not body:
         raise ValueError("pass at least one of parent_ideation_id or parent_experiment_id")
+    headers, err = headers_or_error()
+    if err:
+        return {"error": err}
     base = _base_url()
     async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
         response = await client.patch(
             f"{base}/memory/workflow/{memory_id}/parents",
             json=body,
-            headers=get_headers(),
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
@@ -215,4 +247,5 @@ AGENT_SYSTEM_PROMPT_EXTENSION = """
 2. 执行要求：
    - 在调用工具前，请先向用户输出一段简短的总结，例如：“任务已完成。该过程具有复现价值，我正在将其归档至 EvoMemory 知识库...”
    - 归档的内容必须结构化、客观且精炼。
+   - 若归档函数返回 JSON 且含 `error` 字段，说明未配置 Hub token，请提示用户运行 skill 的 `setup.py share` 并完成登录，不要当作成功上传处理。
 """

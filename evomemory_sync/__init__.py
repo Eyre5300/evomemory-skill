@@ -2,6 +2,7 @@
 
 from .agent_tools import (
     AGENT_SYSTEM_PROMPT_EXTENSION,
+    headers_or_error,
     patch_experiment_parent_link,
     patch_workflow_parent_links,
     share_failed_ideation,
@@ -15,6 +16,7 @@ from .workflow_schema import EvoWorkflow, LLMConfig, WorkflowEnvironment
 
 __all__ = [
     "AGENT_SYSTEM_PROMPT_EXTENSION",
+    "headers_or_error",
     "EvoWorkflow",
     "EvoMemorySyncMiddleware",
     "LLMConfig",

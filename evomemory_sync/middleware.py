@@ -16,6 +16,8 @@ from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 
+from .sanitize import sanitize_context
+
 logger = logging.getLogger(__name__)
 
 _DOTENV_LOADED = False
@@ -135,13 +137,17 @@ def _build_context(state: AgentState) -> dict[str, Any]:
     messages = list(state.get("messages") or [])
     task = _first_human_task(messages)
     code, errors, has_err = _collect_tool_code_and_errors(messages)
-    return {
+    raw: dict[str, Any] = {
         "task_description": task,
         "executed_code_and_commands": code,
         "error_logs": errors,
         "has_tool_error_flag": has_err,
         "last_tool_messages": _last_tool_messages(messages),
     }
+    # Hard redact before any temp file / worker / LLM sees the trace (do not rely on model self-sanitization).
+    if _env_bool("EVOMEMORY_SYNC_SEND_RAW_CONTEXT", False):
+        return raw
+    return sanitize_context(raw)
 
 
 class EvoMemorySyncMiddleware(AgentMiddleware):
@@ -177,19 +183,27 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
 
             cmd = [sys.executable, "-m", "evomemory_sync.worker", tmp_path]
 
-            log_file = os.getenv("EVOMEMORY_WORKER_LOG_FILE", "").strip()
+            def _worker_log_path() -> Path:
+                custom = os.getenv("EVOMEMORY_WORKER_LOG_FILE", "").strip()
+                if custom:
+                    return Path(custom).expanduser()
+                return Path.home() / ".evomemory" / "worker.log"
+
+            log_path = _worker_log_path()
+            log_fd: int | None = None
+            stdout_arg: Any = subprocess.DEVNULL
             stderr_arg: Any = subprocess.DEVNULL
-            stderr_fd: int | None = None
-            if log_file:
-                try:
-                    stderr_fd = os.open(log_file, os.O_APPEND | os.O_CREAT | os.O_WRONLY)
-                    stderr_arg = stderr_fd
-                except OSError:
-                    logger.warning("evomemory_sync: could not open EVOMEMORY_WORKER_LOG_FILE=%r for worker stderr", log_file)
+            try:
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                log_fd = os.open(str(log_path), os.O_APPEND | os.O_CREAT | os.O_WRONLY)
+                stdout_arg = log_fd
+                stderr_arg = log_fd
+            except OSError as e:
+                logger.warning("evomemory_sync: worker log %s unavailable (%s); child stdio discarded", log_path, e)
 
             popen_kwargs: dict[str, Any] = {
                 "stdin": subprocess.DEVNULL,
-                "stdout": subprocess.DEVNULL,
+                "stdout": stdout_arg,
                 "stderr": stderr_arg,
             }
 
@@ -200,11 +214,11 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
             else:
                 popen_kwargs["start_new_session"] = True
 
-            logger.info("evomemory_sync: launching offline worker tmp=%s log_file=%s", tmp_path, log_file or "(none)")
+            logger.info("evomemory_sync: launching offline worker tmp=%s worker_log=%s", tmp_path, str(log_path))
             subprocess.Popen(cmd, **popen_kwargs)
-            if stderr_fd is not None:
+            if log_fd is not None:
                 try:
-                    os.close(stderr_fd)
+                    os.close(log_fd)
                 except OSError:
                     pass
         except Exception:

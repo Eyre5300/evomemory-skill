@@ -18,18 +18,24 @@ from .uploader import upload_memory_record
 logger = logging.getLogger("evomemory_sync.worker")
 
 
+def _default_worker_log_path() -> Path:
+    custom = os.getenv("EVOMEMORY_WORKER_LOG_FILE", "").strip()
+    if custom:
+        return Path(custom).expanduser()
+    return Path.home() / ".evomemory" / "worker.log"
+
+
 def _setup_logging() -> None:
     level_name = os.getenv("EVOMEMORY_WORKER_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
-    log_file = os.getenv("EVOMEMORY_WORKER_LOG_FILE", "").strip()
-    kwargs = {
-        "level": level,
-        "format": "%(asctime)s %(levelname)s %(name)s: %(message)s",
-    }
-    if log_file:
-        kwargs["filename"] = log_file
-        kwargs["filemode"] = "a"
-    logging.basicConfig(**kwargs)
+    log_path = _default_worker_log_path()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        filename=str(log_path),
+        filemode="a",
+    )
 
 
 _setup_logging()

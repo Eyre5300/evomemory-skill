@@ -62,6 +62,9 @@ This will ask:
 | `EVOMEMORY_SEARCH_TOP_K` | No | 10 | Default for `scripts/search.py` `--top-k` (1–100) |
 | `EVOMEMORY_SEARCH_MIN_SIMILARITY` | No | 0 | Default for `scripts/search.py` `--min-similarity` (0–1) |
 | `EVOMEMORY_SYNC_ENABLED` | No | `true` | Set `0`/`false` to disable `EvoMemorySyncMiddleware` |
+| `EVOMEMORY_SYNC_SEND_RAW_CONTEXT` | No | `false` | If `true`, skip client-side redaction in middleware (unsafe; debugging only) |
+| `EVOMEMORY_WORKER_LOG_FILE` | No | `$HOME/.evomemory/worker.log` (POSIX) or equivalent | Worker process log file; middleware redirects child **stdout/stderr** here by default |
+| `EVOMEMORY_WORKER_LOG_LEVEL` | No | `INFO` | Log level for `evomemory_sync.worker` |
 | `EVOMEMORY_EXTRACTOR_MODEL` | For auto-upload | - | Chat model id (OpenAI-compatible API) |
 | `EVOMEMORY_EXTRACTOR_API_KEY` | For auto-upload | - | API key (or use `SILICONFLOW_API_KEY`) |
 | `EVOMEMORY_EXTRACTOR_BASE_URL` | No | `https://api.siliconflow.cn/v1` | Chat Completions base URL |
@@ -69,7 +72,7 @@ This will ask:
 
 ## Auto-upload middleware (`evomemory_sync`)
 
-When `EvoMemorySyncMiddleware` is registered on the agent and `EVOMEMORY_API_TOKEN` is set, each completed run triggers an LLM call to produce Hub-shaped JSON, then `POST` to `/memory/ideation/upload` or `/memory/experiment/upload`. No local JSON files are written.
+When `EvoMemorySyncMiddleware` is registered on the agent and `EVOMEMORY_API_TOKEN` is set, each completed run spawns an offline worker that calls an LLM to produce Hub-shaped JSON, then `POST` to `/memory/ideation/upload` or `/memory/experiment/upload`. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
 
 ## Semantic search (`search.py`)
 
