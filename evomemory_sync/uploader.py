@@ -15,6 +15,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
+from .extraction_fields import normalize_llm_extraction
 from .hub_url import get_base_url
 
 logger = logging.getLogger(__name__)
@@ -220,6 +221,8 @@ def upload_memory_record(data: dict[str, Any]) -> dict[str, Any] | None:
     """Map extractor JSON to Hub upload endpoints. Returns API JSON or None if skipped."""
     if not isinstance(data, dict) or data.get("skip") is True:
         return None
+
+    data = normalize_llm_extraction(data)
 
     base = get_base_url()
     headers = hub_headers()
