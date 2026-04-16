@@ -18,6 +18,8 @@ from urllib.parse import urlparse, urlunparse
 
 import requests
 
+from .env_loader import env as _env_hub, env_float as _env_float, env_int as _env_int
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -27,26 +29,6 @@ ENABLE_HUB_URL_TESTING_FALLBACKS = False
 
 DEFAULT_PUBLIC_HUB = "https://evomem.club"
 TESTING_FALLBACK_IP = "8.130.132.246"
-
-
-def _env_float(name: str, default: float) -> float:
-    raw = (os.getenv(name) or "").strip()
-    if not raw:
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        return default
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = (os.getenv(name) or "").strip()
-    if not raw:
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        return default
 
 
 def normalize_hub_base_url(raw: str, *, default: str = DEFAULT_PUBLIC_HUB) -> str:
@@ -201,12 +183,6 @@ def resolve_working_hub_base_url_cached(
     while len(_resolved_cache) > max_entries:
         _resolved_cache.popitem(last=False)
     return resolved
-
-
-def _env_hub(name: str, default: str = "") -> str:
-    """Read env without importing ``uploader`` (avoids circular import with ``get_base_url``)."""
-    v = os.getenv(name)
-    return v.strip() if isinstance(v, str) and v.strip() else default
 
 
 def get_base_url() -> str:

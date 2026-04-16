@@ -11,14 +11,9 @@ import requests
 from langchain_core.tools import tool
 
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
-from .env_loader import load_env
+from .env_loader import env as _env, load_env
 from .hub_url import get_base_url
 from .uploader import tls_verify
-
-
-def _env(name: str, default: str = "") -> str:
-    v = os.getenv(name)
-    return v.strip() if isinstance(v, str) and v.strip() else default
 
 
 try:

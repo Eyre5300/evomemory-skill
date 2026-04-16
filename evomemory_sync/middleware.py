@@ -18,19 +18,13 @@ from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 
+from .env_loader import env_bool as _env_bool, load_env
 from .sanitize import sanitize_context
 
 logger = logging.getLogger(__name__)
 
 _DOTENV_LOADED = False
 _DOTENV_LOCK = threading.Lock()
-
-
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None or not str(raw).strip():
-        return default
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _maybe_load_dotenv() -> None:
@@ -308,9 +302,13 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
 
         tmp_path: str | None = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8") as f:
+            # Restrict temp file to owner-only (600) to prevent other users from
+            # reading potentially unsanitized context when SYNC_SEND_RAW_CONTEXT=true.
+            fd, tmp_path = tempfile.mkstemp(suffix=".json", text=False)
+            os.chmod(tmp_path, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(ctx, f, ensure_ascii=False)
-                tmp_path = str(Path(f.name).resolve())
+            tmp_path = str(Path(tmp_path).resolve())
 
             cmd = [sys.executable, "-m", "evomemory_sync.worker", tmp_path]
 

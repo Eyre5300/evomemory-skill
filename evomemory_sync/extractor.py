@@ -9,19 +9,11 @@ import re
 from typing import Any
 
 import requests
-import urllib3
-
+from .env_loader import env as _env, env_bool as _env_bool
 from .extraction_fields import EXTRACTOR_SYSTEM_PROMPT
 from .sanitize import sanitize_context as _sanitize_context
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 logger = logging.getLogger(__name__)
-
-
-def _env(name: str, default: str = "") -> str:
-    v = os.getenv(name)
-    return v.strip() if isinstance(v, str) and v.strip() else default
 
 
 def _extractor_base_url() -> str:
@@ -34,13 +26,6 @@ def _extractor_api_key() -> str:
 
 def _extractor_model() -> str:
     return _env("EVOMEMORY_EXTRACTOR_MODEL")
-
-
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None or not str(raw).strip():
-        return default
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _tls_verify() -> bool:

@@ -41,20 +41,21 @@ def _locked_state_fp() -> Iterator[BinaryIO]:
     try:
         if sys.platform == "win32":
             import msvcrt as _msvcrt
-            # Lock from current position (0) for a large byte range to ensure
-            # cross-process mutual exclusion (not just 1 byte).
+            # Non-blocking retry loop to avoid indefinite deadlock with LK_LOCK.
+            _WIN_LOCK_RETRIES = 50
+            _WIN_LOCK_DELAY = 0.1  # seconds
+            acquired = False
             fp.seek(0)
-            try:
-                _msvcrt.locking(fp.fileno(), _msvcrt.LK_NBLCK, 1)
-                # Non-blocking lock succeeded — for simplicity we use a
-                # secondary lockfile to avoid byte-range limitations.
-                _msvcrt.locking(fp.fileno(), _msvcrt.LK_UNLCK, 1)
-            except OSError:
-                # File is locked by another process; fall through to retry
-                pass
-            # Use portalocker-style approach: lock byte 0 as mutex
-            fp.seek(0)
-            _msvcrt.locking(fp.fileno(), _msvcrt.LK_LOCK, 1)
+            for _ in range(_WIN_LOCK_RETRIES):
+                try:
+                    _msvcrt.locking(fp.fileno(), _msvcrt.LK_NBLCK, 1)
+                    acquired = True
+                    break
+                except OSError:
+                    import time as _t
+                    _t.sleep(_WIN_LOCK_DELAY)
+            if not acquired:
+                raise OSError("upload_dedup: could not acquire Windows file lock after retries")
         else:
             fcntl.flock(fp.fileno(), fcntl.LOCK_EX)
         yield fp

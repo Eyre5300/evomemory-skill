@@ -12,25 +12,12 @@ import requests
 import requests.exceptions
 import urllib3
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
+from .env_loader import env, env_bool as _env_bool
 from .extraction_fields import normalize_llm_extraction
 from .hub_url import get_base_url
 
 logger = logging.getLogger(__name__)
-
-
-def env(name: str, default: str = "") -> str:
-    v = os.getenv(name)
-    return v.strip() if isinstance(v, str) and v.strip() else default
-
-
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None or not str(raw).strip():
-        return default
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def tls_verify() -> bool:
@@ -177,6 +164,11 @@ def post_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dic
     req_headers.setdefault("Accept-Language", DEFAULT_ACCEPT_LANGUAGE)
     req_headers.setdefault("Content-Type", "application/json")
 
+    # Suppress urllib3 InsecureRequestWarning only when verify=False
+    _tls = tls_verify()
+    if not _tls:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
     raw_body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     limit = _max_upload_body_bytes()
     if len(raw_body) > limit:
@@ -193,7 +185,7 @@ def post_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dic
 
     for attempt in range(max_retries):
         try:
-            r = requests.post(url, data=raw_body, headers=req_headers, timeout=timeout, verify=tls_verify())
+            r = requests.post(url, data=raw_body, headers=req_headers, timeout=timeout, verify=_tls)
         except transient_net as e:
             last_exc = e
             if attempt < max_retries - 1:
