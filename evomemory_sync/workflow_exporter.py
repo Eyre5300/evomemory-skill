@@ -60,11 +60,16 @@ async def export_and_upload_workflow(
 
     base = _base_url()
 
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
-        response = await client.post(
-            f"{base}/memory/workflow/upload",
-            json=payload,
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    try:
+        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
+            response = await client.post(
+                f"{base}/memory/workflow/upload",
+                json=payload,
+                headers=headers,
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
+    except httpx.RequestError as e:
+        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}

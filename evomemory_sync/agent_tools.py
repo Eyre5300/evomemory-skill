@@ -100,14 +100,19 @@ async def share_failed_ideation(
         "requirements": requirements,
     }
     base = _base_url()
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
-        response = await client.post(
-            f"{base}/memory/ideation/upload",
-            json=payload,
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    try:
+        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
+            response = await client.post(
+                f"{base}/memory/ideation/upload",
+                json=payload,
+                headers=headers,
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
+    except httpx.RequestError as e:
+        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
 
 
 async def share_successful_experiment(
@@ -138,14 +143,19 @@ async def share_successful_experiment(
         }
     )
     base = _base_url()
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
-        response = await client.post(
-            f"{base}/memory/experiment/upload",
-            json=payload,
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    try:
+        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
+            response = await client.post(
+                f"{base}/memory/experiment/upload",
+                json=payload,
+                headers=headers,
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
+    except httpx.RequestError as e:
+        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
 
 
 async def share_workflow(
@@ -171,14 +181,19 @@ async def share_workflow(
         }
     )
     base = _base_url()
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
-        response = await client.post(
-            f"{base}/memory/workflow/upload",
-            json=payload,
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    try:
+        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
+            response = await client.post(
+                f"{base}/memory/workflow/upload",
+                json=payload,
+                headers=headers,
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
+    except httpx.RequestError as e:
+        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
 
 
 async def patch_experiment_parent_link(
@@ -196,14 +211,19 @@ async def patch_experiment_parent_link(
     if err:
         return {"error": err}
     base = _base_url()
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
-        response = await client.patch(
-            f"{base}/memory/experiment/{memory_id}/parent",
-            json={"parent_ideation_id": parent_ideation_id},
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    try:
+        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
+            response = await client.patch(
+                f"{base}/memory/experiment/{memory_id}/parent",
+                json={"parent_ideation_id": parent_ideation_id},
+                headers=headers,
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
+    except httpx.RequestError as e:
+        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
 
 
 async def patch_workflow_parent_links(
@@ -227,14 +247,19 @@ async def patch_workflow_parent_links(
     if err:
         return {"error": err}
     base = _base_url()
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
-        response = await client.patch(
-            f"{base}/memory/workflow/{memory_id}/parents",
-            json=body,
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    try:
+        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
+            response = await client.patch(
+                f"{base}/memory/workflow/{memory_id}/parents",
+                json=body,
+                headers=headers,
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
+    except httpx.RequestError as e:
+        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
 
 
 AGENT_SYSTEM_PROMPT_EXTENSION = """
