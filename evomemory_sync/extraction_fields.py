@@ -1,5 +1,9 @@
 """LLM extraction: canonical field names and normalization for ``uploader.json_to_*``.
 
+Canonical key lists for Hub alignment: server package ``evomemory/upload_field_registry.py``
+(in ``evomemory-vps-bundle``). Prefer those primary keys in LLM JSON; aliases are folded in
+``normalize_llm_extraction`` only to avoid drift.
+
 The Hub REST bodies are built only in ``uploader.json_to_*_payload``. The extractor LLM
 should emit keys that those functions read **first** in each branch, so we avoid a
 fourth parallel naming scheme. Aliases are folded here in one place (instead of growing
