@@ -158,6 +158,51 @@ async def share_successful_experiment(
         return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
 
 
+async def share_recipe(
+    trigger: str,
+    problem: str,
+    solution: str,
+    env_snapshot: str = "(unspecified)",
+    result: str = "(none)",
+    tags: str = "",
+    parent_ideation_id: str | None = None,
+    parent_experiment_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    供 Agent 调用的工具：将一条经过验证的"原子经验卡"（Recipe）上传到 EvoMemory Hub。
+    Recipe 包含 trigger（何时触发）、problem（遇到什么问题）、solution（解决方案）三要素。
+    适合在成功解决一个具体 Bug 或完成一个可复用的技巧后调用。
+    """
+    headers, err = headers_or_error()
+    if err:
+        return {"error": err}
+    payload: dict[str, Any] = {
+        "trigger": trigger,
+        "problem": problem,
+        "solution": solution,
+        "env_snapshot": env_snapshot,
+        "result": result,
+        "tags": tags,
+        "parent_ideation_id": parent_ideation_id,
+        "parent_experiment_id": parent_experiment_id,
+    }
+    payload = _strip_none(payload)
+    base = _base_url()
+    try:
+        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
+            response = await client.post(
+                f"{base}/memory/recipe/upload",
+                json=payload,
+                headers=headers,
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
+    except httpx.RequestError as e:
+        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
+
+
 async def share_workflow(
     title: str,
     description: str,
