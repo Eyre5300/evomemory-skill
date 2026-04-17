@@ -137,7 +137,8 @@ def _prune_old(entries: dict[str, float], now: float, window: float) -> dict[str
 
 
 def should_skip_duplicate(fingerprint: str) -> bool:
-    """True if this fingerprint was recorded as successfully uploaded within the window."""
+    """True if this fingerprint was recorded as successfully uploaded within the window.
+    Uses check-and-reserve pattern: writes a pending entry immediately to prevent TOCTOU races."""
     if not dedup_enabled():
         return False
     now = time.time()
@@ -152,6 +153,8 @@ def should_skip_duplicate(fingerprint: str) -> bool:
             )
             _write_entries_fp(fp, entries)
             return True
+        # Reserve: mark as in-progress to prevent concurrent workers from skipping
+        entries[fingerprint] = now
         _write_entries_fp(fp, entries)
         return False
 

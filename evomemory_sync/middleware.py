@@ -252,6 +252,10 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
             return
         timeout = float(os.getenv("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
         for ref_id in hub_ref_ids:
+            # Validate ref_id is a UUID to prevent path injection
+            if not re.match(r"^[0-9a-f\-]{36}$", ref_id, re.IGNORECASE):
+                logger.warning("skipping invalid hub ref_id: %s", ref_id)
+                continue
             try:
                 r = requests.post(
                     f"{base}/memory/{ref_id}/verify",

@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import httpx
+import re as _re
 
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
 from .env_loader import load_env
@@ -39,6 +40,14 @@ except Exception:
 
 _DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 _UNSET = object()
+_UUID_RE = _re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", _re.IGNORECASE)
+
+
+def _validate_uuid(value: str, name: str = "id") -> str:
+    """Raise ValueError if *value* is not a valid UUID string."""
+    if not _UUID_RE.match(str(value).strip()):
+        raise ValueError(f"Invalid {name}: expected UUID format, got {value!r}")
+    return value.strip()
 
 _MISSING_TOKEN_MSG = (
     "EvoMemory Hub: set EVOMEMORY_API_TOKEN or EVOMEMORY_AGENT_TOKEN "
@@ -252,6 +261,12 @@ async def patch_experiment_parent_link(
     """
     if parent_ideation_id is _UNSET:
         raise ValueError("parent_ideation_id is required (use None to clear the link)")
+    try:
+        _validate_uuid(memory_id, "memory_id")
+        if parent_ideation_id is not None:
+            _validate_uuid(str(parent_ideation_id), "parent_ideation_id")
+    except ValueError as e:
+        return {"error": str(e)}
     headers, err = headers_or_error()
     if err:
         return {"error": err}
@@ -282,9 +297,23 @@ async def patch_workflow_parent_links(
     server-side merge behavior for that field.
     """
     body: dict[str, Any] = {}
+    try:
+        _validate_uuid(memory_id, "memory_id")
+    except ValueError as e:
+        return {"error": str(e)}
     if parent_ideation_id is not _UNSET:
+        if parent_ideation_id is not None:
+            try:
+                _validate_uuid(str(parent_ideation_id), "parent_ideation_id")
+            except ValueError as e:
+                return {"error": str(e)}
         body["parent_ideation_id"] = parent_ideation_id
     if parent_experiment_id is not _UNSET:
+        if parent_experiment_id is not None:
+            try:
+                _validate_uuid(str(parent_experiment_id), "parent_experiment_id")
+            except ValueError as e:
+                return {"error": str(e)}
         body["parent_experiment_id"] = parent_experiment_id
     if not body:
         raise ValueError("pass at least one of parent_ideation_id or parent_experiment_id")

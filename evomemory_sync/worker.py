@@ -73,10 +73,22 @@ def main() -> int:
 
         mem_type = str(record.get("memory_type") or record.get("memory_kind") or record.get("type") or "")
         logger.info("offline worker upload ctx_hash=%s memory_type=%s", ctx_hash, mem_type)
-        upload_memory_record(record)
-        mark_upload_succeeded(fp)
-        logger.info("offline worker done ctx_hash=%s", ctx_hash)
-        return 0
+        # Retry up to 3 times for transient failures
+        last_err = None
+        for attempt in range(1, 4):
+            try:
+                upload_memory_record(record)
+                mark_upload_succeeded(fp)
+                logger.info("offline worker done ctx_hash=%s", ctx_hash)
+                return 0
+            except Exception as upload_err:
+                last_err = upload_err
+                if attempt < 3:
+                    import time as _time
+                    logger.warning("offline worker upload attempt %d failed: %s, retrying in %ds…", attempt, upload_err, attempt * 2)
+                    _time.sleep(attempt * 2)
+        logger.error("offline worker upload failed after 3 attempts: %s", last_err)
+        return 1
     except Exception:
         logger.exception("offline worker failed")
         return 1
