@@ -23,19 +23,10 @@ from .sanitize import sanitize_context
 
 logger = logging.getLogger(__name__)
 
-_DOTENV_LOADED = False
-_DOTENV_LOCK = threading.Lock()
-
 
 def _maybe_load_dotenv() -> None:
-    global _DOTENV_LOADED
-    with _DOTENV_LOCK:
-        if _DOTENV_LOADED:
-            return
-        _DOTENV_LOADED = True
+    """Lazy-load .env via env_loader (which handles its own idempotency)."""
     try:
-        from .env_loader import load_env
-
         load_env()
     except Exception:
         pass

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from collections import OrderedDict
 from urllib.parse import urlparse, urlunparse
@@ -157,6 +158,7 @@ def resolve_working_hub_base_url(
 
 # Process-local cache: canonical configured URL -> (resolved origin, monotonic timestamp)
 _resolved_cache: "OrderedDict[str, tuple[str, float]]" = OrderedDict()
+_resolved_cache_lock = threading.Lock()
 
 
 def resolve_working_hub_base_url_cached(
@@ -170,19 +172,20 @@ def resolve_working_hub_base_url_cached(
     ttl = _env_float("EVOMEMORY_HUB_RESOLVE_CACHE_TTL_SECONDS", 3600.0)
     max_entries = max(1, _env_int("EVOMEMORY_HUB_RESOLVE_CACHE_MAX_ENTRIES", 32))
 
-    if key in _resolved_cache:
-        val, ts = _resolved_cache[key]
-        if now - ts < ttl:
-            _resolved_cache.move_to_end(key)
-            return val
-        del _resolved_cache[key]
+    with _resolved_cache_lock:
+        if key in _resolved_cache:
+            val, ts = _resolved_cache[key]
+            if now - ts < ttl:
+                _resolved_cache.move_to_end(key)
+                return val
+            del _resolved_cache[key]
 
-    resolved = resolve_working_hub_base_url(key, default=default, verify=verify)
-    _resolved_cache[key] = (resolved, now)
-    _resolved_cache.move_to_end(key)
-    while len(_resolved_cache) > max_entries:
-        _resolved_cache.popitem(last=False)
-    return resolved
+        resolved = resolve_working_hub_base_url(key, default=default, verify=verify)
+        _resolved_cache[key] = (resolved, now)
+        _resolved_cache.move_to_end(key)
+        while len(_resolved_cache) > max_entries:
+            _resolved_cache.popitem(last=False)
+        return resolved
 
 
 def get_base_url() -> str:
