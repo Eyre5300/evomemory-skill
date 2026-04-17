@@ -62,12 +62,12 @@ E) Workflow — reusable prompts + tool wiring (rare). Keys:
 {"memory_type":"workflow","title":"","description":"","prompt_templates":"","tool_configuration":"","parent_ideation_id":null,"parent_experiment_id":null}
 
 F) Recipe — lightweight atomic experience card (PREFERRED for most agent traces). Use when the trace contains a concrete problem-solution pair that other agents can directly reuse. Keys:
-{"memory_type":"recipe","trigger":"","problem":"","solution":"","env_snapshot":"","result":"","tags":""}
+{"memory_type":"recipe","trigger":"","problem":"","solution":"","env_snapshot":"","result":"","tags":"","parent_ideation_id":null,"parent_experiment_id":null}
 
-Rules: Prefer **recipe** when the trace has a clear trigger→solution pattern. Prefer failed ideation only for complex multi-step failures. Prefer experiment only on clear success with full metrics. parent_* only if a Hub UUID is explicitly referenced.
+Rules: Prefer **recipe** when the trace has a clear trigger→solution pattern. Prefer failed ideation only for complex multi-step failures. Prefer experiment only on clear success with full metrics. parent_* fields are optional — fill only when a Hub UUID is explicitly referenced in the trace (e.g. "based on ideation abc-123" or "from experiment def-456").
 
 Examples (shape only; redact real secrets in your output):
-{"memory_type":"recipe","trigger":"pytorch OOM during 7B fine-tuning","problem":"CUDA out of memory with batch_size=64 on RTX 3090","solution":"gradient_checkpointing=True + batch_size=32","env_snapshot":"transformers==4.40.0, torch==2.3.0, RTX 3090 24GB","result":"training succeeded, VRAM 24.1GB→18.3GB, speed -15%","tags":"pytorch,OOM,fine-tuning"}
+{"memory_type":"recipe","trigger":"pytorch OOM during 7B fine-tuning","problem":"CUDA out of memory with batch_size=64 on RTX 3090","solution":"gradient_checkpointing=True + batch_size=32","env_snapshot":"transformers==4.40.0, torch==2.3.0, RTX 3090 24GB","result":"training succeeded, VRAM 24.1GB→18.3GB, speed -15%","tags":"pytorch,OOM,fine-tuning","parent_ideation_id":null,"parent_experiment_id":null}
 {"memory_type":"ideation","status":"failed","proposal_summary":"Tried X","trigger_conditions":"Tool error Y","do_not_repeat_notes":"Avoid Z","retrieval_tags":"x,y"}
 {"memory_type":"experiment","status":"completed","task_description":"Q","data_summary":"D","model_strategy":"M","environment_constraints":"E","parent_ideation_id":null,"hardware_requirements":null,"software_dependencies":null}
 """
