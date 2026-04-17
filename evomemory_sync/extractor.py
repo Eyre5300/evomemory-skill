@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+from functools import lru_cache
 from typing import Any
 
 import requests
@@ -16,14 +17,17 @@ from .sanitize import sanitize_context as _sanitize_context
 logger = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=1)
 def _extractor_base_url() -> str:
     return _env("EVOMEMORY_EXTRACTOR_BASE_URL", "https://api.siliconflow.cn/v1").rstrip("/")
 
 
+@lru_cache(maxsize=1)
 def _extractor_api_key() -> str:
     return _env("EVOMEMORY_EXTRACTOR_API_KEY") or _env("SILICONFLOW_API_KEY")
 
 
+@lru_cache(maxsize=1)
 def _extractor_model() -> str:
     return _env("EVOMEMORY_EXTRACTOR_MODEL")
 
@@ -88,7 +92,11 @@ def _call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:
             payload["response_format"] = {"type": "json_object"}
         r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=_tls_verify())
         r.raise_for_status()
-        data = r.json()
+        try:
+            data = r.json()
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.warning("evomemory_sync: LLM returned non-JSON (status %s): %.200s", r.status_code, r.text[:200])
+            raise RuntimeError(f"LLM response is not valid JSON: {exc}") from exc
         choice = data["choices"][0]["message"]
         raw = choice.get("content") or ""
         if isinstance(raw, list):

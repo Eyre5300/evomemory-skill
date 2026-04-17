@@ -27,7 +27,7 @@ def sanitize_text(text: str) -> str:
     # IP address: use negative lookbehind/lookahead to avoid matching version numbers (e.g. 4.40.0, 3.11.1)
     # Only match when preceded by a non-digit/dot and followed by a non-digit/dot
     s = re.sub(
-        r"(?<![.\d])(?:\d{1,3}\.){3}\d{1,3}(?![.\d])",
+        r"(?<![.\w])(?:\d{1,3}\.){3}\d{1,3}(?![.\w])",
         "[REDACTED]",
         s,
     )
