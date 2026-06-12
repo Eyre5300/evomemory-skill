@@ -7,3 +7,4 @@ build/
 .env
 scripts/.env
 .venv/
+.pytest_cache/
