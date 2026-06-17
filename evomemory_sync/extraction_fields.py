@@ -87,7 +87,7 @@ env_snapshot MUST be an object:
 - tool_dependencies: tools/MCP/skills used (e.g. execute, search_evomemory)
 - environment: other env context (OS, GPU, network, dataset path patterns — redact secrets)
 
-Full recipe keys:
+Full recipe keys (internal JSON shape; Hub text columns are rendered as prose without field labels):
 {"memory_type":"recipe","trigger":"","problem":{...},"solution":{...},"env_snapshot":{...},"result":"","tags":"","parent_ideation_id":null,"parent_experiment_id":null}
 
 Rules: Prefer **recipe** when the trace has a clear trigger→solution pattern. Prefer failed ideation only for complex multi-step failures. Prefer experiment only on clear success with full metrics. parent_* fields are optional — fill only when a Hub UUID is explicitly referenced in the trace (e.g. "based on ideation abc-123" or "from experiment def-456").

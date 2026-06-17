@@ -7,14 +7,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from evomemory_sync.recipe_format import (
     format_env_snapshot_section,
-    format_problem_section,
-    format_solution_section,
     prepare_recipe_hub_fields,
 )
 from evomemory_sync.uploader import json_to_recipe_payload
 
 
-def test_structured_recipe_formats_labeled_blocks():
+def test_structured_recipe_formats_prose_not_labels():
     data = {
         "memory_type": "recipe",
         "trigger": "OOM",
@@ -39,12 +37,23 @@ def test_structured_recipe_formats_labeled_blocks():
         "tags": "gpu",
     }
     fields = prepare_recipe_hub_fields(data)
-    assert "task_type: 代码调试" in fields["problem"]
-    assert "domain: Python web应用" in fields["problem"]
-    assert "method: 减小 batch" in fields["solution"]
-    assert "rationale: 峰值显存过高" in fields["solution"]
-    assert "creator: gpt-4 + run-1" in fields["env_snapshot"]
-    assert "software_dependencies: torch==2.3" in fields["env_snapshot"]
+    assert "task_type:" not in fields["problem"]
+    assert "domain:" not in fields["problem"]
+    assert "代码调试" in fields["problem"]
+    assert "Python web应用" in fields["problem"]
+    assert "仅 execute" in fields["problem"]
+    assert "启动 500" in fields["problem"]
+
+    assert "method:" not in fields["solution"]
+    assert "rationale:" not in fields["solution"]
+    assert "减小 batch" in fields["solution"]
+    assert "batch_size=32" in fields["solution"]
+    assert "峰值显存过高" in fields["solution"]
+
+    assert "creator:" not in fields["env_snapshot"]
+    assert "software_dependencies:" not in fields["env_snapshot"]
+    assert "gpt-4 + run-1" in fields["env_snapshot"]
+    assert "torch==2.3" in fields["env_snapshot"]
 
 
 def test_creator_fallback_from_agent_metadata():
@@ -58,7 +67,8 @@ def test_creator_fallback_from_agent_metadata():
         "result": "ok",
     }
     env = format_env_snapshot_section(data)
-    assert "creator: Qwen-72B + thread-xyz" in env
+    assert "creator:" not in env
+    assert "Qwen-72B + thread-xyz" in env
 
 
 def test_legacy_free_text_still_works():

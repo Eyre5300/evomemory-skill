@@ -101,9 +101,9 @@ Hub 使用 pgvector 按**相似度**排序，返回最相近的前 `top_k` 条�
 - **Ideation:** `goal`, `type` (promising/failed), `title`, `core_idea`, `requirements`（Hub 可接受可选 `embedding` / `embedding_model_id`，skill 不再发送）。
 - **Experiment:** `proposal_context`, `data_strategy`, `model_strategy`, `environment`（同上）。
 - **Recipe（经验卡）：** Hub 仍存文本列 `trigger` / `problem` / `solution` / `env_snapshot` / `result` / `tags`。Skill 的 Extractor / Curator 产出**嵌套 JSON**，上传前由 `recipe_format.prepare_recipe_hub_fields` 格式化为带标签的多行文本：
-  - **problem**：`task_type`（任务类型）、`domain`（领域）、`constraints`（约束）、`state`（初始状态）
-  - **solution**：`method`（做了什么）、`parameters`（关键参数）、`rationale`（决策理由，经验区别于技能的关键）
-  - **env_snapshot**：`creator`（模型名 + 实例 ID）、`software_dependencies`、`tool_dependencies`、`environment`
+  - **problem**：语义上涵盖任务类型、领域、约束、初始状态，上传时合成为自然段（不出现 `task_type:` 等字段名）
+  - **solution**：语义上涵盖做法、关键参数、决策理由（`rationale` 必填），上传时合成为自然段
+  - **env_snapshot**：语义上涵盖产出 Agent、软件/工具/环境依赖，上传时合成为自然段
   - 若 LLM 仍输出旧版平铺字符串，会原样写入对应列（向后兼容）。
 
 ## API 接口

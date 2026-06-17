@@ -192,21 +192,13 @@ from evomemory_sync.agent_tools import (
 
 ### Recipe（经验卡）字段结构
 
-Extractor 与 Curator 对 `memory_type: recipe` 产出嵌套对象；上传 Hub 前格式化为 `key: value` 多行文本：
+Extractor 与 Curator 对 `memory_type: recipe` 产出嵌套对象（便于校验与合并）；上传 Hub 前格式化为**自然语言段落**（不含 `task_type:` 等字段标签）：
 
-| 区块 | 子字段 | 含义 |
-|------|--------|------|
-| **problem** | `task_type` | 任务类型（如「代码调试」「数学证明」） |
-| | `domain` | 领域标签（如「Python web 应用」） |
-| | `constraints` | 约束（可用工具、时限、输入格式等） |
-| | `state` | 任务初始状态 |
-| **solution** | `method` | 方法描述（做了什么） |
-| | `parameters` | 关键参数与选择 |
-| | `rationale` | 为何这样做的推理链（**必须非空**） |
-| **env_snapshot** | `creator` | 产出经验的 Agent（`EVOMEMORY_AGENT_MODEL` + `EVOMEMORY_AGENT_INSTANCE_ID`，或 Extractor 填写） |
-| | `software_dependencies` | 软件/版本依赖 |
-| | `tool_dependencies` | 工具依赖 |
-| | `environment` | 其他运行环境信息 |
+| 区块 | 内部子字段（JSON） | 上传后 Hub 文本 |
+|------|-------------------|----------------|
+| **problem** | `task_type`, `domain`, `constraints`, `state` | 一段话，涵盖任务类型、领域、约束与初始状态 |
+| **solution** | `method`, `parameters`, `rationale` | 一段话，涵盖做法、参数与**决策理由**（`rationale` 必填） |
+| **env_snapshot** | `creator`, `software_dependencies`, `tool_dependencies`, `environment` | 一段话，涵盖产出 Agent 与依赖环境 |
 
 ## How the middleware decides M_I vs M_E
 

@@ -54,7 +54,7 @@ Output schema:
 
 Rules:
 - Prefer **recipe** shape when memory_type is recipe.
-- For recipe, **problem** MUST be object {task_type, domain, constraints, state}; **solution** MUST be {method, parameters, rationale}; **env_snapshot** MUST be {creator, software_dependencies, tool_dependencies, environment}. Hub stores these as labeled text blocks.
+- For recipe, **problem** MUST be object {task_type, domain, constraints, state}; **solution** MUST be {method, parameters, rationale}; **env_snapshot** MUST be {creator, software_dependencies, tool_dependencies, environment}. Upload layer converts these to **natural-language paragraphs** (no field-name labels like task_type: on Hub).
 - On **update**, update_memory_id MUST equal similar_own_top1.id when provided.
 - On **skip**, still include "reason"; "refined" may be omitted.
 - On **create** or **update**, "refined" MUST keep the same memory_type and include all required fields for that type.
