@@ -71,6 +71,43 @@ def test_creator_fallback_from_agent_metadata():
     assert "Qwen-72B + thread-xyz" in env
 
 
+def test_slash_in_domain_becomes_chinese_enumeration():
+    data = {
+        "memory_type": "recipe",
+        "trigger": "t",
+        "problem": {
+            "task_type": "代码调试",
+            "domain": "Python 开发 / Windows 环境",
+            "constraints": "仅 pytest",
+            "state": "报错",
+        },
+        "solution": {"method": "m", "parameters": "p", "rationale": "r"},
+        "env_snapshot": {"creator": "x"},
+        "result": "ok",
+    }
+    problem = prepare_recipe_hub_fields(data)["problem"]
+    assert " / " not in problem
+    assert "Python 开发、Windows 环境" in problem
+
+
+def test_shell_and_preserved_in_state():
+    data = {
+        "memory_type": "recipe",
+        "trigger": "t",
+        "problem": {
+            "task_type": "代码调试",
+            "domain": "shell",
+            "constraints": "x",
+            "state": "cd repo && python -m pytest 报错：标记 && 无效",
+        },
+        "solution": {"method": "m", "parameters": "p", "rationale": "r"},
+        "env_snapshot": {"creator": "x"},
+        "result": "ok",
+    }
+    state = prepare_recipe_hub_fields(data)["problem"]
+    assert "&&" in state
+
+
 def test_legacy_free_text_still_works():
     data = {
         "memory_type": "recipe",

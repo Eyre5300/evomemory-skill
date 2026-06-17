@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .env_loader import env as _env
@@ -34,6 +35,18 @@ def _strip_trailing_period(text: str) -> str:
     return text.rstrip().rstrip("。.").strip()
 
 
+def _normalize_phrase(text: str) -> str:
+    """Turn LLM-style compound labels into natural Chinese prose fragments."""
+    s = _strip_trailing_period(text)
+    # e.g. "Python 开发 / Windows 环境" -> "Python 开发、Windows 环境"
+    s = re.sub(r"\s*/\s*", "、", s)
+    s = re.sub(r"\s*\\\s*", "、", s)
+    # Single & only (preserve shell operators like &&)
+    s = re.sub(r"(?<!&)&(?!&)", "与", s)
+    s = re.sub(r"\s+与\s+", "与", s)
+    return s.strip()
+
+
 def _section_dict(
     data: dict[str, Any],
     section: str,
@@ -61,23 +74,23 @@ def _section_dict(
 
 
 def _format_problem_prose(parts: dict[str, str]) -> str:
-    task_type = parts.get("task_type", "")
-    domain = parts.get("domain", "")
-    constraints = parts.get("constraints", "")
-    state = parts.get("state", "")
+    task_type = _normalize_phrase(parts.get("task_type", ""))
+    domain = _normalize_phrase(parts.get("domain", ""))
+    constraints = _normalize_phrase(parts.get("constraints", ""))
+    state = _normalize_phrase(parts.get("state", ""))
 
     sentences: list[str] = []
     if task_type and domain:
-        sentences.append(f"在{_strip_trailing_period(domain)}场景下进行{_strip_trailing_period(task_type)}")
+        sentences.append(f"在{domain}场景下进行{task_type}")
     elif task_type:
-        sentences.append(f"这是一项{_strip_trailing_period(task_type)}任务")
+        sentences.append(f"这是一项{task_type}任务")
     elif domain:
-        sentences.append(f"任务领域为{_strip_trailing_period(domain)}")
+        sentences.append(f"任务领域为{domain}")
 
     if constraints:
-        sentences.append(f"约束条件包括{_strip_trailing_period(constraints)}")
+        sentences.append(f"约束条件包括{constraints}")
     if state:
-        sentences.append(f"初始状态为{_strip_trailing_period(state)}")
+        sentences.append(f"初始状态为{state}")
 
     if not sentences:
         return ""
@@ -85,26 +98,23 @@ def _format_problem_prose(parts: dict[str, str]) -> str:
 
 
 def _format_solution_prose(parts: dict[str, str]) -> str:
-    method = parts.get("method", "")
-    parameters = parts.get("parameters", "")
-    rationale = parts.get("rationale", "")
+    method = _normalize_phrase(parts.get("method", ""))
+    parameters = _normalize_phrase(parts.get("parameters", ""))
+    rationale = _normalize_phrase(parts.get("rationale", ""))
 
     sentences: list[str] = []
     if method and parameters:
-        sentences.append(
-            f"采取{_strip_trailing_period(method)}，关键参数为{_strip_trailing_period(parameters)}"
-        )
+        sentences.append(f"采取{method}，关键参数为{parameters}")
     elif method:
-        sentences.append(_strip_trailing_period(method))
+        sentences.append(method)
     elif parameters:
-        sentences.append(f"关键参数为{_strip_trailing_period(parameters)}")
+        sentences.append(f"关键参数为{parameters}")
 
     if rationale:
-        why = _strip_trailing_period(rationale)
-        if why.startswith("因为"):
-            sentences.append(why)
+        if rationale.startswith("因为"):
+            sentences.append(rationale)
         else:
-            sentences.append(f"选择该方案是因为{why}")
+            sentences.append(f"选择该方案是因为{rationale}")
 
     if not sentences:
         return ""
@@ -112,10 +122,10 @@ def _format_solution_prose(parts: dict[str, str]) -> str:
 
 
 def _format_env_prose(parts: dict[str, str]) -> str:
-    creator = parts.get("creator", "")
-    software = parts.get("software_dependencies", "")
-    tools = parts.get("tool_dependencies", "")
-    environment = parts.get("environment", "")
+    creator = _normalize_phrase(parts.get("creator", ""))
+    software = _normalize_phrase(parts.get("software_dependencies", ""))
+    tools = _normalize_phrase(parts.get("tool_dependencies", ""))
+    environment = _normalize_phrase(parts.get("environment", ""))
 
     sentences: list[str] = []
     if creator:
@@ -123,11 +133,11 @@ def _format_env_prose(parts: dict[str, str]) -> str:
 
     details: list[str] = []
     if software:
-        details.append(f"软件方面依赖 {_strip_trailing_period(software)}")
+        details.append(f"软件方面依赖 {software}")
     if tools:
-        details.append(f"使用 {_strip_trailing_period(tools)} 相关工具")
+        details.append(f"使用 {tools} 相关工具")
     if environment:
-        details.append(f"运行于 {_strip_trailing_period(environment)} 环境")
+        details.append(f"运行于 {environment} 环境")
 
     if details:
         sentences.append("；".join(details))
