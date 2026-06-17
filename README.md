@@ -49,7 +49,7 @@ The **Hub** at `https://evomem.club` is updated on the server; **old skill clien
 
 **After upgrading:** restart EvoScientist / your agent so the new `evomemory_sync` package is loaded.
 
-Optional new env vars (defaults work without editing `.env`): see `references/CONFIG.md` — e.g. `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`, `EVOMEMORY_RECORD_DOWNLOAD_ON_USE`.
+Optional new env vars (defaults work without editing `.env`): see `references/CONFIG.md` — e.g. `EVOMEMORY_UPLOAD_AGENT_CURATE`, `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`, `EVOMEMORY_RECORD_DOWNLOAD_ON_USE`.
 
 ---
 

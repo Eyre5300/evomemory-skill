@@ -66,7 +66,7 @@ Runs **`git pull`** + **`pip install -e .`**; does **not** overwrite `.env`. Res
 - **Only `/install-skill` in Cursor:** clone `https://gitee.com/MagniDrive/evomemory-skill.git`, copy `.env` if you have one, then `python upgrade.py` or first-time `python install.py`.
 - **Restart the agent** after upgrading.
 
-Optional tuning: `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`, `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` in `.env` (`references/CONFIG.md`).
+Optional tuning: `EVOMEMORY_UPLOAD_AGENT_CURATE`, `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`, `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` in `.env` (`references/CONFIG.md`).
 
 ## Install the package (manual)
 
@@ -191,7 +191,7 @@ See `references/CONFIG.md` for env vars and REST endpoints.
 
 ## Managing your shares on the Hub (edit / delete / hide)
 
-**经验（Recipe）与构思/实验均可修改**：作者可调用 `PUT /memory/{kind}/{id}/update`（网页端若提供编辑入口则同源）。Skill 在上传前会自动检索相似记忆：若与你已上传的 top-1 相似度 ≥ `EVOMEMORY_UPLOAD_UPDATE_SIMILARITY`（默认 0.82），则**更新**该条而非新建。
+**经验（Recipe）与构思/实验均可修改**：作者可调用 `PUT /memory/{kind}/{id}/update`（网页端编辑较难，**Skill 端由 Agent 自动决策**）。上传前默认启用 **Agent Curator**（`EVOMEMORY_UPLOAD_AGENT_CURATE`）：检索 Hub 相似记忆后，由 LLM 决定 **新建 / 更新已有 / 跳过**，并**润色、合并**正文；若 Curator 不可用则回退到固定阈值语义去重（`EVOMEMORY_UPLOAD_UPDATE_SIMILARITY` 等）。
 
 When you have a valid JWT in **`EVOMEMORY_API_TOKEN`** (from `setup.py share` / `install.py`), you can manage cards you uploaded:
 

@@ -65,6 +65,9 @@ This will ask:
 | `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP` | No | `true` | Before upload: vector-search Hub for similar memories; update own card or skip duplicate |
 | `EVOMEMORY_UPLOAD_UPDATE_SIMILARITY` | No | `0.82` | If top-1 **your** memory ≥ this similarity → `PUT .../update` instead of new upload |
 | `EVOMEMORY_UPLOAD_SKIP_SIMILARITY` | No | `0.90` | If no own match and community top-3 ≥ this → skip upload (duplicate exists) |
+| `EVOMEMORY_UPLOAD_AGENT_CURATE` | No | `true` | Before upload: LLM searches similar memories, decides **create / update / skip**, and **refines** draft text |
+| `EVOMEMORY_CURATOR_MODEL` | No | same as `EVOMEMORY_EXTRACTOR_MODEL` | Model for upload curator (OpenAI-compatible chat) |
+| `EVOMEMORY_CURATOR_TIMEOUT_SECONDS` | No | same as extractor | HTTP timeout for curator LLM call |
 | `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` | No | `true` | When `search_evomemory` returns results, POST `record-download` so web download counts increment |
 | `EVOMEMORY_HUB_RESOLVE_CACHE_TTL_SECONDS` | No | `3600` | How long `resolve_working_hub_base_url_cached` keeps a probe result (long-running agents can pick up Hub URL changes without restart) |
 | `EVOMEMORY_HUB_RESOLVE_CACHE_MAX_ENTRIES` | No | `32` | Max cached Hub origins (FIFO eviction) |
@@ -81,7 +84,7 @@ This will ask:
 
 ## Auto-upload middleware (`evomemory_sync`)
 
-When `EvoMemorySyncMiddleware` is registered on the agent and `EVOMEMORY_API_TOKEN` is set, each completed run spawns an offline worker that calls an LLM to produce Hub-shaped JSON, then uploads via **`upload_memory_record`** (semantic dedup: search top-1 own + top-3 others, then **create** or **`PUT .../update`**). The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
+When `EvoMemorySyncMiddleware` is registered on the agent and `EVOMEMORY_API_TOKEN` is set, each completed run spawns an offline worker that calls an LLM to produce Hub-shaped JSON, then uploads via **`upload_memory_record`**. Upload path: **agent curator** (default) searches Hub for similar cards, an LLM chooses **create / update / skip** and rewrites the draft; if curator is off or fails, **rule-based semantic dedup** applies (`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`). The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
 
 When an agent **uses** Hub memories via `search_evomemory`, the skill calls **`POST /memory/{kind}/{id}/record-download`** for each returned row so the website **download_count** stays in sync (web “下载” button uses the full `GET .../download` endpoint).
 

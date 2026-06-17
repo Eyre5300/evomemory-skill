@@ -308,21 +308,6 @@ def upload_memory_record(data: dict[str, Any]) -> dict[str, Any] | None:
 
     data = normalize_llm_extraction(data)
 
-    headers = hub_headers()
-    mem_type = str(data.get("memory_type") or "").strip().lower()
+    from .upload_curator import upload_memory_record_with_agent
 
-    if mem_type == "ideation":
-        body = json_to_ideation_payload(data)
-    elif mem_type == "experiment":
-        body = json_to_experiment_payload(data)
-    elif mem_type == "workflow":
-        body = json_to_workflow_payload(data)
-    elif mem_type == "recipe":
-        body = json_to_recipe_payload(data)
-    else:
-        logger.debug("evomemory_sync: unknown memory_type %r, skip upload", data.get("memory_type"))
-        return None
-
-    from .upload_semantic import upload_or_update_memory_record
-
-    return upload_or_update_memory_record(mem_type, body, headers)
+    return upload_memory_record_with_agent(data)
