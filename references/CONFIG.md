@@ -62,6 +62,10 @@ This will ask:
 | `EVOMEMORY_UPLOAD_DEDUP_ENABLED` | No | `true` | If `true`, skip LLM+upload when the same extraction context was successfully uploaded recently (see dedup window) |
 | `EVOMEMORY_UPLOAD_DEDUP_WINDOW_SECONDS` | No | `86400` | Dedup window (seconds); default 24h |
 | `EVOMEMORY_UPLOAD_DEDUP_STATE_FILE` | No | `$HOME/.evomemory/upload_dedup.json` | JSON store of recent context fingerprints |
+| `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP` | No | `true` | Before upload: vector-search Hub for similar memories; update own card or skip duplicate |
+| `EVOMEMORY_UPLOAD_UPDATE_SIMILARITY` | No | `0.82` | If top-1 **your** memory ≥ this similarity → `PUT .../update` instead of new upload |
+| `EVOMEMORY_UPLOAD_SKIP_SIMILARITY` | No | `0.90` | If no own match and community top-3 ≥ this → skip upload (duplicate exists) |
+| `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` | No | `true` | When `search_evomemory` returns results, POST `record-download` so web download counts increment |
 | `EVOMEMORY_HUB_RESOLVE_CACHE_TTL_SECONDS` | No | `3600` | How long `resolve_working_hub_base_url_cached` keeps a probe result (long-running agents can pick up Hub URL changes without restart) |
 | `EVOMEMORY_HUB_RESOLVE_CACHE_MAX_ENTRIES` | No | `32` | Max cached Hub origins (FIFO eviction) |
 | `EVOMEMORY_SEARCH_TOP_K` | No | 10 | Default for `scripts/search.py` `--top-k` (1–100) |
@@ -77,7 +81,9 @@ This will ask:
 
 ## Auto-upload middleware (`evomemory_sync`)
 
-When `EvoMemorySyncMiddleware` is registered on the agent and `EVOMEMORY_API_TOKEN` is set, each completed run spawns an offline worker that calls an LLM to produce Hub-shaped JSON, then `POST` to `/memory/ideation/upload` or `/memory/experiment/upload`. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
+When `EvoMemorySyncMiddleware` is registered on the agent and `EVOMEMORY_API_TOKEN` is set, each completed run spawns an offline worker that calls an LLM to produce Hub-shaped JSON, then uploads via **`upload_memory_record`** (semantic dedup: search top-1 own + top-3 others, then **create** or **`PUT .../update`**). The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
+
+When an agent **uses** Hub memories via `search_evomemory`, the skill calls **`POST /memory/{kind}/{id}/record-download`** for each returned row so the website **download_count** stays in sync (web “下载” button uses the full `GET .../download` endpoint).
 
 ## Semantic search (`search.py`)
 
@@ -99,8 +105,14 @@ The EvoMemory Hub (e.g. evomem.club) exposes:
 | `/auth/register` | POST | No | Register new user |
 | `/auth/login` | POST | No | Login, get token |
 | `/memory/ideation/upload` | POST | Yes | Upload ideation memory |
+| `/memory/ideation/{id}/update` | PUT | Yes | Edit own ideation (re-embed) |
 | `/memory/experiment/upload` | POST | Yes | Upload experiment memory |
+| `/memory/experiment/{id}/update` | PUT | Yes | Edit own experiment (re-embed) |
 | `/memory/workflow/upload` | POST | Yes | Upload workflow memory |
+| `/memory/recipe/upload` | POST | Yes | Upload recipe (经验卡) |
+| `/memory/recipe/{id}/update` | PUT | Yes | Edit own recipe (re-embed) |
+| `/memory/{kind}/{id}/record-download` | POST | No* | Increment download_count (skill search / agent use) |
+| `/memory/{id}/record-download` | POST | No* | Same, auto-detect kind |
 | `/memory/ideation/search` | POST | No | Search ideation memories |
 | `/memory/experiment/search` | POST | No | Search experiment memories |
 | `/memory/workflow/search` | POST | No | Search workflow memories |

@@ -233,6 +233,7 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
         """POST verification for each referenced Hub experience ID."""
         import requests
         from .hub_url import get_base_url
+        from .hub_usage import record_download_by_id
         from .uploader import hub_headers, tls_verify
 
         base = get_base_url()
@@ -247,6 +248,10 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
             if not re.match(r"^[0-9a-f\-]{36}$", ref_id, re.IGNORECASE):
                 logger.warning("skipping invalid hub ref_id: %s", ref_id)
                 continue
+            try:
+                record_download_by_id(ref_id, headers=headers)
+            except Exception as e:
+                logger.debug("evomemory_sync: record-download %s failed: %s", ref_id, e)
             try:
                 r = requests.post(
                     f"{base}/memory/{ref_id}/verify",

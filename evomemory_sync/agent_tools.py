@@ -23,6 +23,7 @@ Use :func:`headers_or_error` in new code; :func:`get_headers` remains for script
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Optional
 
 import httpx
@@ -31,7 +32,7 @@ import re as _re
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
 from .env_loader import load_env
 from .hub_url import get_base_url
-from .uploader import env, tls_verify
+from .uploader import env, tls_verify, upload_memory_record
 
 try:
     load_env()
@@ -102,26 +103,20 @@ async def share_failed_ideation(
     if err:
         return {"error": err}
     payload: dict[str, Any] = {
-        "type": "failed",
+        "memory_type": "ideation",
+        "status": "failed",
         "goal": goal,
         "title": title,
         "core_idea": core_idea,
         "requirements": requirements,
     }
-    base = _base_url()
     try:
-        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
-            response = await client.post(
-                f"{base}/memory/ideation/upload",
-                json=payload,
-                headers=headers,
-            )
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
-    except httpx.RequestError as e:
-        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
+        result = await asyncio.to_thread(upload_memory_record, payload)
+        if result is None:
+            return {"error": "upload skipped or empty payload"}
+        return result
+    except Exception as e:
+        return {"error": f"Hub upload failed: {type(e).__name__}: {e}"}
 
 
 async def share_successful_experiment(
@@ -142,6 +137,7 @@ async def share_successful_experiment(
         return {"error": err}
     payload = _strip_none(
         {
+            "memory_type": "experiment",
             "proposal_context": proposal_context,
             "data_strategy": data_strategy,
             "model_strategy": model_strategy,
@@ -151,20 +147,13 @@ async def share_successful_experiment(
             "parent_ideation_id": parent_ideation_id,
         }
     )
-    base = _base_url()
     try:
-        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
-            response = await client.post(
-                f"{base}/memory/experiment/upload",
-                json=payload,
-                headers=headers,
-            )
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
-    except httpx.RequestError as e:
-        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
+        result = await asyncio.to_thread(upload_memory_record, payload)
+        if result is None:
+            return {"error": "upload skipped or empty payload"}
+        return result
+    except Exception as e:
+        return {"error": f"Hub upload failed: {type(e).__name__}: {e}"}
 
 
 async def share_recipe(
@@ -185,31 +174,26 @@ async def share_recipe(
     headers, err = headers_or_error()
     if err:
         return {"error": err}
-    payload: dict[str, Any] = {
-        "trigger": trigger,
-        "problem": problem,
-        "solution": solution,
-        "env_snapshot": env_snapshot,
-        "result": result,
-        "tags": tags,
-        "parent_ideation_id": parent_ideation_id,
-        "parent_experiment_id": parent_experiment_id,
-    }
-    payload = _strip_none(payload)
-    base = _base_url()
+    payload: dict[str, Any] = _strip_none(
+        {
+            "memory_type": "recipe",
+            "trigger": trigger,
+            "problem": problem,
+            "solution": solution,
+            "env_snapshot": env_snapshot,
+            "result": result,
+            "tags": tags,
+            "parent_ideation_id": parent_ideation_id,
+            "parent_experiment_id": parent_experiment_id,
+        }
+    )
     try:
-        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
-            response = await client.post(
-                f"{base}/memory/recipe/upload",
-                json=payload,
-                headers=headers,
-            )
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
-    except httpx.RequestError as e:
-        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
+        out = await asyncio.to_thread(upload_memory_record, payload)
+        if out is None:
+            return {"error": "upload skipped or empty payload"}
+        return out
+    except Exception as e:
+        return {"error": f"Hub upload failed: {type(e).__name__}: {e}"}
 
 
 async def share_workflow(
@@ -226,6 +210,7 @@ async def share_workflow(
         return {"error": err}
     payload = _strip_none(
         {
+            "memory_type": "workflow",
             "title": title,
             "description": description,
             "prompt_templates": prompt_templates,
@@ -234,20 +219,13 @@ async def share_workflow(
             "parent_experiment_id": parent_experiment_id,
         }
     )
-    base = _base_url()
     try:
-        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
-            response = await client.post(
-                f"{base}/memory/workflow/upload",
-                json=payload,
-                headers=headers,
-            )
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
-    except httpx.RequestError as e:
-        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
+        out = await asyncio.to_thread(upload_memory_record, payload)
+        if out is None:
+            return {"error": "upload skipped or empty payload"}
+        return out
+    except Exception as e:
+        return {"error": f"Hub upload failed: {type(e).__name__}: {e}"}
 
 
 async def patch_experiment_parent_link(

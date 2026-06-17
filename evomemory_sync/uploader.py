@@ -211,6 +211,63 @@ def post_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dic
         raise err
 
 
+def put_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+    """PUT JSON with the same retry semantics as post_json."""
+    timeout = float(env("EVOMEMORY_API_TIMEOUT_SECONDS", "120") or "120")
+    max_retries = 2
+    last_exc: Exception | None = None
+    req_headers = dict(headers)
+    req_headers.setdefault("User-Agent", BROWSER_UA)
+    req_headers.setdefault("Accept", DEFAULT_ACCEPT)
+    req_headers.setdefault("Accept-Language", DEFAULT_ACCEPT_LANGUAGE)
+    req_headers.setdefault("Content-Type", "application/json")
+
+    _tls = tls_verify()
+    if not _tls:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    raw_body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    limit = _max_upload_body_bytes()
+    if len(raw_body) > limit:
+        raise RuntimeError(
+            f"Request body size {len(raw_body)} bytes exceeds limit {limit} "
+            f"(set EVOMEMORY_UPLOAD_MAX_BODY_BYTES to raise; default 524288)."
+        )
+
+    transient_net = (
+        requests.exceptions.Timeout,
+        requests.exceptions.ConnectionError,
+        requests.exceptions.ChunkedEncodingError,
+    )
+
+    for attempt in range(max_retries):
+        try:
+            r = requests.put(url, data=raw_body, headers=req_headers, timeout=timeout, verify=_tls)
+        except transient_net as e:
+            last_exc = e
+            if attempt < max_retries - 1:
+                time.sleep(2**attempt)
+                continue
+            raise
+
+        if 200 <= r.status_code < 300:
+            return r.json()
+
+        try:
+            detail = r.json()
+        except Exception:
+            detail = r.text
+        err = RuntimeError(f"HTTP {r.status_code}: {detail}")
+
+        if 500 <= r.status_code < 600:
+            last_exc = err
+            if attempt < max_retries - 1:
+                time.sleep(2**attempt)
+                continue
+            raise last_exc
+        raise err
+
+
 def json_to_recipe_payload(data: dict[str, Any]) -> dict[str, Any]:
     """Map recipe extraction JSON to Hub upload payload."""
     mem_type = str(data.get("memory_type") or "").strip().lower()
@@ -251,24 +308,21 @@ def upload_memory_record(data: dict[str, Any]) -> dict[str, Any] | None:
 
     data = normalize_llm_extraction(data)
 
-    base = get_base_url()
     headers = hub_headers()
     mem_type = str(data.get("memory_type") or "").strip().lower()
 
     if mem_type == "ideation":
         body = json_to_ideation_payload(data)
-        url = f"{base}/memory/ideation/upload"
     elif mem_type == "experiment":
         body = json_to_experiment_payload(data)
-        url = f"{base}/memory/experiment/upload"
     elif mem_type == "workflow":
         body = json_to_workflow_payload(data)
-        url = f"{base}/memory/workflow/upload"
     elif mem_type == "recipe":
         body = json_to_recipe_payload(data)
-        url = f"{base}/memory/recipe/upload"
     else:
         logger.debug("evomemory_sync: unknown memory_type %r, skip upload", data.get("memory_type"))
         return None
 
-    return post_json(url, body, headers)
+    from .upload_semantic import upload_or_update_memory_record
+
+    return upload_or_update_memory_record(mem_type, body, headers)

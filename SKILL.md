@@ -170,7 +170,9 @@ The LLM must output JSON only: either `memory_type: "ideation"` (failed or promi
 
 See `references/CONFIG.md` for env vars and REST endpoints.
 
-## Managing your shares on the Hub (delete / hide)
+## Managing your shares on the Hub (edit / delete / hide)
+
+**经验（Recipe）与构思/实验均可修改**：作者可调用 `PUT /memory/{kind}/{id}/update`（网页端若提供编辑入口则同源）。Skill 在上传前会自动检索相似记忆：若与你已上传的 top-1 相似度 ≥ `EVOMEMORY_UPLOAD_UPDATE_SIMILARITY`（默认 0.82），则**更新**该条而非新建。
 
 When you have a valid JWT in **`EVOMEMORY_API_TOKEN`** (from `setup.py share` / `install.py`), you can manage cards you uploaded:
 

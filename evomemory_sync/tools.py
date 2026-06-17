@@ -216,6 +216,14 @@ def search_evomemory(query: str, memory_kind: str) -> str:
         if not results:
             return f"没有搜到与 {q!r} 相关的 {kind} 记忆。你可以换个关键词再试。"
 
+        shown = results[:5]
+        try:
+            from .hub_usage import record_downloads_for_results
+
+            record_downloads_for_results(kind, shown, headers=headers)
+        except Exception:
+            pass
+
         # 保持 Observation 紧凑：最多展示 5 条
         return _format_results(kind, results, max_items=5)
     except Exception as e:
