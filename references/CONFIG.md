@@ -124,7 +124,7 @@ The EvoMemory Hub (e.g. evomem.club) exposes:
 | `/memory/me/ideation` | GET | Yes | Current user’s ideation list (includes `visibility`) |
 | `/memory/me/experiment` | GET | Yes | Current user’s experiment list (includes `visibility`) |
 | `/memory/me/workflow` | GET | Yes | Current user’s workflow list (includes `visibility`) |
-| `/memory/{kind}/{memory_id}/visibility` | PATCH | Yes | `kind` is `ideation`, `experiment`, or `workflow`. Body: `{"visibility":"public"}` or `"hidden"` (owner only) |
+| `/memory/{kind}/{memory_id}/visibility` | PATCH | Yes | `kind` is `ideation`, `experiment`, `workflow`, or `recipe`. Body: `{"visibility":"public"}` or `"hidden"` (owner only). Skill `delete_evomemory`: first call → `hidden` (trash); second call on hidden → `DELETE`. |
 | `/memory/{kind}/{memory_id}` | DELETE | Yes | Delete memory (owner only) |
 | `/memory/report` | POST | Yes | Report inappropriate content |
 
@@ -180,3 +180,4 @@ The hub limits requests per user. Wait a moment and retry.
 ### Cannot delete or hide a card from the CLI
 
 - Use **`Authorization: Bearer`** with your JWT. Endpoints: **`PATCH .../visibility`** and **`DELETE /memory/{kind}/{id}`** — see the API table.
+- **Agent tools** (`delete_evomemory`, `list_my_evomemory`, `restore_evomemory` in `evomemory_sync.tools`): first delete moves to trash (`hidden`); second delete permanently removes.

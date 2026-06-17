@@ -229,3 +229,89 @@ def search_evomemory(query: str, memory_kind: str) -> str:
     except Exception as e:
         return f"检索失败：{type(e).__name__}: {e}。建议检查 `EVOMEMORY_API_BASE_URL` 与网络连接。"
 
+
+def _require_auth_headers() -> tuple[dict[str, str] | None, str | None]:
+    from .agent_tools import headers_or_error
+
+    return headers_or_error()
+
+
+@tool
+def delete_evomemory(memory_kind: str, memory_id: str) -> str:
+    """删除自己在 EvoMemory Hub 上发布的记忆（仅作者）。
+
+    第一次删除：移入垃圾桶（visibility=hidden，社区不可见，可在 dashboard 恢复）。
+    对已在垃圾桶中的同一 ID 再次删除：永久删除，不可恢复。
+    `memory_kind` 为 ideation / experiment / workflow / recipe。"""
+
+    headers, err = _require_auth_headers()
+    if err:
+        return f"删除失败：{err}"
+    try:
+        from .memory_manage import trash_or_delete_memory
+
+        out = trash_or_delete_memory(memory_kind, memory_id, headers=headers)
+        if out.get("status") == "error":
+            return f"删除失败：{out.get('error')}"
+        return str(out.get("message") or out)
+    except ValueError as e:
+        return f"删除失败：{e}"
+    except Exception as e:
+        return f"删除失败：{type(e).__name__}: {e}"
+
+
+@tool
+def list_my_evomemory(memory_kind: str, include_hidden: bool = True) -> str:
+    """列出当前登录用户在 Hub 上自己上传的记忆（含 id 与 visibility），便于管理或删除。
+
+    `include_hidden=true` 时包含垃圾桶（hidden）中的条目。"""
+
+    headers, err = _require_auth_headers()
+    if err:
+        return f"列表失败：{err}"
+    try:
+        from .memory_manage import list_my_memories
+
+        rows = list_my_memories(memory_kind, headers=headers, include_hidden=include_hidden, limit=50)
+        if not rows:
+            return f"你没有上传过任何 {memory_kind} 记忆。"
+        lines: list[str] = []
+        for row in rows[:30]:
+            vis = row.get("visibility") or "public"
+            rid = row.get("id")
+            title = (
+                row.get("title")
+                or row.get("goal")
+                or row.get("trigger")
+                or row.get("proposal_context")
+                or row.get("description")
+                or "(no title)"
+            )
+            title = _truncate_preview_text(str(title), 80)
+            lines.append(f"- id={rid} visibility={vis} · {title}")
+        return f"共 {len(rows)} 条 {memory_kind}（展示前 {min(len(rows), 30)} 条）：\n" + "\n".join(lines)
+    except ValueError as e:
+        return f"列表失败：{e}"
+    except Exception as e:
+        return f"列表失败：{type(e).__name__}: {e}"
+
+
+@tool
+def restore_evomemory(memory_kind: str, memory_id: str) -> str:
+    """将垃圾桶（hidden）中的自己的记忆恢复为公开（public）。"""
+
+    headers, err = _require_auth_headers()
+    if err:
+        return f"恢复失败：{err}"
+    try:
+        from .memory_manage import restore_memory_from_trash
+
+        out = restore_memory_from_trash(memory_kind, memory_id, headers=headers)
+        if out.get("status") == "error":
+            return f"恢复失败：{out.get('error')}"
+        return str(out.get("message") or out)
+    except ValueError as e:
+        return f"恢复失败：{e}"
+    except Exception as e:
+        return f"恢复失败：{type(e).__name__}: {e}"
+

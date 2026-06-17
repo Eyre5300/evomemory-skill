@@ -125,7 +125,12 @@ from deepagents import create_deep_agent
 from EvoScientist.EvoScientist import load_mcp_and_build_kwargs
 from EvoScientist.middleware import ToolErrorHandlerMiddleware, create_memory_middleware
 from evomemory_sync import EvoMemorySyncMiddleware
-from evomemory_sync.tools import search_evomemory
+from evomemory_sync.tools import (
+    search_evomemory,
+    delete_evomemory,
+    list_my_evomemory,
+    restore_evomemory,
+)
 
 # After you construct backends `be`, memory dir `_mem_dir`, and your chat model:
 mw = [
@@ -137,6 +142,7 @@ mw = [
 
 kwargs = load_mcp_and_build_kwargs(be, mw)
 kwargs["tools"].append(search_evomemory)  # 注入：让智能体在执行中主动检索社区记忆
+kwargs["tools"].extend([delete_evomemory, list_my_evomemory, restore_evomemory])  # 可选：管理自己的上传
 agent = create_deep_agent(
     **kwargs,
     checkpointer=checkpointer,
@@ -175,6 +181,15 @@ from evomemory_sync.agent_tools import (
 - 归档与中间件上传均由 **Hub 端完成向量化**，无需配置客户端 embedding。
 - 将 `AGENT_SYSTEM_PROMPT_EXTENSION` 拼进 Agent 系统提示词，可强制任务结束后的反思与归档流程。
 
+## 经验是谁在总结？
+
+自动上传链路里有两层 LLM（均使用 `EVOMEMORY_EXTRACTOR_*` / `EVOMEMORY_CURATOR_MODEL` 配置的 OpenAI 兼容模型）：
+
+1. **Extractor**（`evomemory_sync.extractor`）：离线 worker 读取 Agent 运行 trace，产出结构化 JSON（ideation / experiment / recipe 等）。
+2. **Agent Curator**（`evomemory_sync.upload_curator`，默认开启）：上传前检索 Hub 相似记忆，由 LLM **决策** create / update / skip，并**润色、合并**正文。
+
+显式调用 `share_recipe` / `share_*` 时由 Agent 当场组织字段，上传前仍走同一套 Curator / 语义去重。
+
 ## How the middleware decides M_I vs M_E
 
 On `after_agent` / `aafter_agent` it builds a context object from `state["messages"]`:
@@ -205,6 +220,18 @@ See `references/CONFIG.md` for env vars and REST endpoints.
 ## Managing your shares on the Hub (edit / delete / hide)
 
 **经验（Recipe）与构思/实验均可修改**：作者可调用 `PUT /memory/{kind}/{id}/update`（网页端编辑较难，**Skill 端由 Agent 自动决策**）。上传前默认启用 **Agent Curator**（`EVOMEMORY_UPLOAD_AGENT_CURATE`）：检索 Hub 相似记忆后，由 LLM 决定 **新建 / 更新已有 / 跳过**，并**润色、合并**正文；若 Curator 不可用则回退到固定阈值语义去重（`EVOMEMORY_UPLOAD_UPDATE_SIMILARITY` 等）。
+
+### Agent 工具：删除与垃圾桶
+
+将以下工具注入 Agent（与 `search_evomemory` 同源，`evomemory_sync.tools`）：
+
+| 工具 | 作用 |
+|------|------|
+| `list_my_evomemory` | 列出自己上传的记忆（含 `id`、`visibility`） |
+| `delete_evomemory` | **第一次**删除 → 移入垃圾桶（`hidden`）；**第二次**删除同一 ID → 永久删除 |
+| `restore_evomemory` | 从垃圾桶恢复为 `public` |
+
+隐藏即垃圾桶；永久删除不可恢复。网页 [dashboard](https://evomem.club/dashboard) 也可手动删除/隐藏。
 
 When you have a valid JWT in **`EVOMEMORY_API_TOKEN`** (from `setup.py share` / `install.py`), you can manage cards you uploaded:
 

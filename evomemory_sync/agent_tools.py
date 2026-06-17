@@ -314,6 +314,61 @@ async def patch_workflow_parent_links(
         return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
 
 
+async def delete_my_memory(memory_kind: str, memory_id: str) -> dict[str, Any]:
+    """Trash-then-delete: first call hides; second call permanently deletes."""
+    headers, err = headers_or_error()
+    if err:
+        return {"error": err}
+    try:
+        from .memory_manage import trash_or_delete_memory
+
+        return await asyncio.to_thread(trash_or_delete_memory, memory_kind, memory_id, headers=headers)
+    except ValueError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+async def list_my_memories_tool(
+    memory_kind: str,
+    *,
+    include_hidden: bool = True,
+    limit: int = 50,
+) -> dict[str, Any]:
+    headers, err = headers_or_error()
+    if err:
+        return {"error": err}
+    try:
+        from .memory_manage import list_my_memories
+
+        rows = await asyncio.to_thread(
+            list_my_memories,
+            memory_kind,
+            headers=headers,
+            include_hidden=include_hidden,
+            limit=limit,
+        )
+        return {"status": "success", "results": rows}
+    except ValueError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+async def restore_my_memory(memory_kind: str, memory_id: str) -> dict[str, Any]:
+    headers, err = headers_or_error()
+    if err:
+        return {"error": err}
+    try:
+        from .memory_manage import restore_memory_from_trash
+
+        return await asyncio.to_thread(restore_memory_from_trash, memory_kind, memory_id, headers=headers)
+    except ValueError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 AGENT_SYSTEM_PROMPT_EXTENSION = """
 【强制工作流：知识沉淀与归档】
 在你完成用户分配的任何研发、代码编写或技术调研任务后，你必须执行以下反思与归档步骤：
@@ -326,4 +381,9 @@ AGENT_SYSTEM_PROMPT_EXTENSION = """
    - 在调用工具前，请先向用户输出一段简短的总结，例如：“任务已完成。该过程具有复现价值，我正在将其归档至 EvoMemory 知识库...”
    - 归档的内容必须结构化、客观且精炼。
    - 若归档函数返回 JSON 且含 `error` 字段，说明未配置 Hub token，请提示用户运行 skill 的 `setup.py share` 并完成登录，不要当作成功上传处理。
+
+3. 管理已上传记忆（需用户明确要求删除时）：
+   - 先用 `list_my_evomemory` 确认 id 与 visibility。
+   - `delete_evomemory`：第一次删除移入垃圾桶（hidden）；对同一 id 再次删除才永久删除。
+   - 误删可从垃圾桶用 `restore_evomemory` 恢复公开。
 """
