@@ -84,6 +84,8 @@ env_snapshot (string) — must cover in prose:
 - tool/MCP/skill dependencies
 - environment (OS, GPU, etc.; redact secrets)
 
+When quoting shell commands, paths, or flags inside any paragraph, copy them **verbatim** — do not replace `/`, `;`, or `&&` with Chinese punctuation (e.g. never turn `tests -q` into `tests、-q`).
+
 Full recipe keys:
 {"memory_type":"recipe","trigger":"","problem":"","solution":"","env_snapshot":"","result":"","tags":"","parent_ideation_id":null,"parent_experiment_id":null}
 
