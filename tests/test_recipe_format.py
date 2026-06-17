@@ -1,4 +1,4 @@
-"""Tests for structured recipe formatting."""
+"""Tests for recipe Hub field pass-through (LLM prose, no template stitching)."""
 
 import os
 import sys
@@ -9,103 +9,77 @@ from evomemory_sync.recipe_format import (
     format_env_snapshot_section,
     prepare_recipe_hub_fields,
 )
+from evomemory_sync.extraction_fields import normalize_llm_extraction
 from evomemory_sync.uploader import json_to_recipe_payload
 
 
-def test_structured_recipe_formats_prose_not_labels():
+def test_prose_strings_pass_through_unchanged():
+    problem = (
+        "在 Python web 应用里做代码调试，只能用 execute，服务启动即 500，"
+        "日志显示 ImportError 来自缺失的 flask 扩展。"
+    )
+    solution = (
+        "安装 flask-cors==4.0.0 并在 app 上注册 CORS。这样选是因为 500 由 import 失败引起，"
+        "先补齐依赖比改业务逻辑更直接。"
+    )
+    env = "由 gpt-4 + run-1 总结；依赖 Flask==3.0，通过 execute 安装，运行在 Linux 容器内。"
     data = {
         "memory_type": "recipe",
-        "trigger": "OOM",
-        "problem": {
-            "task_type": "代码调试",
-            "domain": "Python web应用",
-            "constraints": "仅 execute",
-            "state": "启动 500",
-        },
-        "solution": {
-            "method": "减小 batch",
-            "parameters": "batch_size=32",
-            "rationale": "峰值显存过高，减半 batch 降低激活占用",
-        },
-        "env_snapshot": {
-            "creator": "gpt-4 + run-1",
-            "software_dependencies": "torch==2.3",
-            "tool_dependencies": "execute",
-            "environment": "CUDA 12",
-        },
+        "trigger": "Flask 500 on boot",
+        "problem": problem,
+        "solution": solution,
+        "env_snapshot": env,
         "result": "ok",
-        "tags": "gpu",
+        "tags": "flask",
     }
     fields = prepare_recipe_hub_fields(data)
+    assert fields["problem"] == problem
+    assert fields["solution"] == solution
+    assert fields["env_snapshot"] == env
     assert "task_type:" not in fields["problem"]
-    assert "domain:" not in fields["problem"]
-    assert "代码调试" in fields["problem"]
-    assert "Python web应用" in fields["problem"]
-    assert "仅 execute" in fields["problem"]
-    assert "启动 500" in fields["problem"]
-
-    assert "method:" not in fields["solution"]
-    assert "rationale:" not in fields["solution"]
-    assert "减小 batch" in fields["solution"]
-    assert "batch_size=32" in fields["solution"]
-    assert "峰值显存过高" in fields["solution"]
-
-    assert "creator:" not in fields["env_snapshot"]
-    assert "software_dependencies:" not in fields["env_snapshot"]
-    assert "gpt-4 + run-1" in fields["env_snapshot"]
-    assert "torch==2.3" in fields["env_snapshot"]
 
 
-def test_creator_fallback_from_agent_metadata():
+def test_nested_dict_deprecated_not_stitched():
     data = {
         "memory_type": "recipe",
         "trigger": "t",
-        "problem": {"task_type": "a", "domain": "b", "constraints": "c", "state": "d"},
+        "problem": {"task_type": "代码调试", "domain": "web", "constraints": "x", "state": "y"},
         "solution": {"method": "m", "parameters": "p", "rationale": "r"},
-        "env_snapshot": {},
+        "env_snapshot": {"creator": "a"},
+        "result": "ok",
+    }
+    fields = prepare_recipe_hub_fields(data)
+    assert fields["problem"] == ""
+    assert fields["solution"] == ""
+    assert fields["env_snapshot"] == ""
+
+
+def test_normalize_clears_legacy_nested_sections():
+    raw = {
+        "memory_type": "recipe",
+        "problem": {"task_type": "a"},
+        "solution": "already prose",
+        "env_snapshot": '{"creator":"x"}',
+    }
+    out = normalize_llm_extraction(raw)
+    assert out["problem"] == ""
+    assert out["solution"] == "already prose"
+    assert out["env_snapshot"] == ""
+
+
+def test_creator_fallback_only_when_env_missing():
+    data = {
+        "memory_type": "recipe",
+        "trigger": "t",
+        "problem": "p",
+        "solution": "s",
+        "env_snapshot": "",
         "_agent_metadata": {"model": "Qwen-72B", "instance_id": "thread-xyz"},
         "result": "ok",
     }
     env = format_env_snapshot_section(data)
-    assert "creator:" not in env
     assert "Qwen-72B + thread-xyz" in env
-
-
-def test_slash_in_domain_becomes_chinese_enumeration():
-    data = {
-        "memory_type": "recipe",
-        "trigger": "t",
-        "problem": {
-            "task_type": "代码调试",
-            "domain": "Python 开发 / Windows 环境",
-            "constraints": "仅 pytest",
-            "state": "报错",
-        },
-        "solution": {"method": "m", "parameters": "p", "rationale": "r"},
-        "env_snapshot": {"creator": "x"},
-        "result": "ok",
-    }
-    problem = prepare_recipe_hub_fields(data)["problem"]
-    assert " / " not in problem
-    assert "Python 开发、Windows 环境" in problem
-
-
-def test_shell_and_preserved_in_state():
-    data = {
-        "memory_type": "recipe",
-        "trigger": "t",
-        "problem": {
-            "task_type": "代码调试",
-            "domain": "shell",
-            "constraints": "x",
-            "state": "cd repo && python -m pytest 报错：标记 && 无效",
-        },
-        "solution": {"method": "m", "parameters": "p", "rationale": "r"},
-        "env_snapshot": {"creator": "x"},
-        "result": "ok",
-    }
-    state = prepare_recipe_hub_fields(data)["problem"]
-    assert "&&" in state
+    assert "本经验由" in env
 
 
 def test_legacy_free_text_still_works():

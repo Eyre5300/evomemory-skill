@@ -192,13 +192,13 @@ from evomemory_sync.agent_tools import (
 
 ### Recipe（经验卡）字段结构
 
-Extractor 与 Curator 对 `memory_type: recipe` 产出嵌套对象（便于校验与合并）；上传 Hub 前格式化为**自然语言段落**（不含 `task_type:` 等字段标签）：
+Extractor 与 Curator 对 `memory_type: recipe` 产出 **problem / solution / env_snapshot 三段完整自然语言**（字符串，非嵌套 JSON）。各段须在语义上覆盖下列维度，由 **Agent 自己写成连贯的话**，上传层**原样**写入 Hub，不做填空拼接：
 
-| 区块 | 内部子字段（JSON） | 上传后 Hub 文本 |
-|------|-------------------|----------------|
-| **problem** | `task_type`, `domain`, `constraints`, `state` | 一段话，涵盖任务类型、领域、约束与初始状态 |
-| **solution** | `method`, `parameters`, `rationale` | 一段话，涵盖做法、参数与**决策理由**（`rationale` 必填） |
-| **env_snapshot** | `creator`, `software_dependencies`, `tool_dependencies`, `environment` | 一段话，涵盖产出 Agent 与依赖环境 |
+| 区块 | 须覆盖的语义维度（写作指引，不出现在正文里） |
+|------|---------------------------------------------|
+| **problem** | 任务类型、领域、约束、初始状态 |
+| **solution** | 做法、关键参数、**决策理由**（必填） |
+| **env_snapshot** | 产出 Agent、软件依赖、工具依赖、运行环境 |
 
 ## How the middleware decides M_I vs M_E
 

@@ -54,7 +54,7 @@ Output schema:
 
 Rules:
 - Prefer **recipe** shape when memory_type is recipe.
-- For recipe, **problem** MUST be object {task_type, domain, constraints, state}; **solution** MUST be {method, parameters, rationale}; **env_snapshot** MUST be {creator, software_dependencies, tool_dependencies, environment}. Upload layer converts these to **natural-language paragraphs** (no field-name labels like task_type: on Hub).
+- For recipe, **problem** / **solution** / **env_snapshot** MUST be **complete prose strings** (not nested objects). Each paragraph must semantically cover the usual dimensions (task type, domain, constraints, state; method, parameters, rationale; creator, deps, environment) in natural language — you write the full text; upload layer does not stitch fields.
 - On **update**, update_memory_id MUST equal similar_own_top1.id when provided.
 - On **skip**, still include "reason"; "refined" may be omitted.
 - On **create** or **update**, "refined" MUST keep the same memory_type and include all required fields for that type.
@@ -65,7 +65,7 @@ Rules:
 
 Examples:
 {"action":"skip","update_memory_id":null,"reason":"Same Flask Blueprint fix already in similar_others_top3"}
-{"action":"update","update_memory_id":"abc-...","reason":"Merge new env versions into existing recipe","refined":{"memory_type":"recipe","trigger":"...","problem":{"task_type":"...","domain":"...","constraints":"...","state":"..."},"solution":{"method":"...","parameters":"...","rationale":"..."},"env_snapshot":{"creator":"...","software_dependencies":"...","tool_dependencies":"...","environment":"..."},"result":"...","tags":"..."}}
+{"action":"update","update_memory_id":"abc-...","reason":"Merge new env versions into existing recipe","refined":{"memory_type":"recipe","trigger":"...","problem":"...完整问题段落...","solution":"...完整方案段落（含理由）...","env_snapshot":"...完整环境段落...","result":"...","tags":"..."}}
 {"action":"create","update_memory_id":null,"reason":"New OOM workaround not in similar results","refined":{...}}
 """
 
