@@ -187,6 +187,8 @@ The LLM must output JSON only: either `memory_type: "ideation"` (failed or promi
 
 ### Post-run routing（引用经验 / 上传 / 去重）
 
+**成功**定义（`run_success_flag`）：工具调用无错误；代码/命令输出无运行时错误（非零 exit、Traceback、`[FAILED]` 等）；若任务或输出中出现自检/真值信号（pytest、assert、ground truth、真值等），则须检测到通过或与真值一致，否则视为失败。
+
 | 情况 | record-download | verify | 上传 |
 |------|-----------------|--------|------|
 | 引用了 Hub 经验 `[HUB_REF:…]`，任务**成功** | ✅ | ✅ | ❌ |

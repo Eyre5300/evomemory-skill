@@ -19,6 +19,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langgraph.runtime import Runtime
 
 from .env_loader import env_bool as _env_bool, load_env
+from .run_outcome import assess_run_outcome
 from .sanitize import sanitize_context
 
 logger = logging.getLogger(__name__)
@@ -185,11 +186,16 @@ def _build_context(state: AgentState) -> dict[str, Any]:
     task = _first_human_task(messages)
     code, errors, has_err = _collect_tool_code_and_errors(messages)
     hub_refs = _extract_hub_references(messages)
+    outcome = assess_run_outcome(messages, task=task)
     raw: dict[str, Any] = {
         "task_description": task,
         "executed_code_and_commands": code,
         "error_logs": errors,
-        "has_tool_error_flag": has_err,
+        "has_tool_error_flag": outcome["has_tool_error_flag"],
+        "has_code_runtime_error_flag": outcome["has_code_runtime_error_flag"],
+        "validation_status": outcome["validation_status"],
+        "validation_reason": outcome["validation_reason"],
+        "run_success_flag": outcome["run_success_flag"],
         "last_tool_messages": _last_tool_messages(messages),
         "_hub_references": list(hub_refs) if hub_refs else [],
     }
@@ -202,7 +208,7 @@ def _build_context(state: AgentState) -> dict[str, Any]:
 def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
     """Decide record-download, verify, and upload after an agent run.
 
-    Policy:
+    Policy (success = tool OK + code OK + validation OK when applicable):
     - Cited Hub experience → always record-download (success or failure).
     - Cited + success → verify only, no upload.
     - Cited + failure → record-download, no verify, upload correction (curator may update own card).
@@ -210,16 +216,16 @@ def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
     - No citation + failure → no upload.
     """
     hub_refs = [str(x).strip() for x in (ctx.get("_hub_references") or []) if str(x).strip()]
-    has_err = bool(ctx.get("has_tool_error_flag", False))
+    run_success = bool(ctx.get("run_success_flag", False))
 
     record_download_ids = list(hub_refs)
-    verify_ids = list(hub_refs) if hub_refs and not has_err else []
+    verify_ids = list(hub_refs) if hub_refs and run_success else []
 
     should_upload = False
-    if hub_refs and has_err:
+    if hub_refs and not run_success:
         should_upload = True
         ctx["_correcting_after_hub_failure"] = True
-    elif not hub_refs and not has_err:
+    elif not hub_refs and run_success:
         should_upload = True
 
     return {
@@ -330,8 +336,11 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
                 logger.warning("evomemory_sync: verify request failed", exc_info=True)
 
         if not actions["should_upload"]:
-            if not hub_refs and ctx.get("has_tool_error_flag"):
-                logger.info("evomemory_sync: run failed without Hub refs → skip upload")
+            if not hub_refs and not ctx.get("run_success_flag"):
+                logger.info(
+                    "evomemory_sync: run not successful without Hub refs → skip upload (%s)",
+                    ctx.get("validation_reason") or "tool/code/validation failure",
+                )
             return
 
         if hub_refs:

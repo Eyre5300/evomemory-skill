@@ -12,7 +12,7 @@ class TestResolvePostRunActions:
     def test_hub_refs_success_verify_no_upload(self):
         ctx = {
             "_hub_references": ["abc-123", "def-456"],
-            "has_tool_error_flag": False,
+            "run_success_flag": True,
         }
         actions = _resolve_post_run_actions(ctx)
         assert actions["record_download_ids"] == ["abc-123", "def-456"]
@@ -22,7 +22,7 @@ class TestResolvePostRunActions:
     def test_hub_refs_failure_record_download_upload_no_verify(self):
         ctx = {
             "_hub_references": ["abc-123"],
-            "has_tool_error_flag": True,
+            "run_success_flag": False,
         }
         actions = _resolve_post_run_actions(ctx)
         assert actions["record_download_ids"] == ["abc-123"]
@@ -31,18 +31,18 @@ class TestResolvePostRunActions:
         assert ctx["_correcting_after_hub_failure"] is True
 
     def test_no_hub_refs_success_upload(self):
-        ctx = {"has_tool_error_flag": False}
+        ctx = {"run_success_flag": True}
         actions = _resolve_post_run_actions(ctx)
         assert actions["record_download_ids"] == []
         assert actions["verify_ids"] == []
         assert actions["should_upload"] is True
 
     def test_no_hub_refs_failure_no_upload(self):
-        ctx = {"has_tool_error_flag": True}
+        ctx = {"run_success_flag": False}
         actions = _resolve_post_run_actions(ctx)
         assert actions["should_upload"] is False
 
     def test_empty_hub_refs_success_upload(self):
-        ctx = {"_hub_references": [], "has_tool_error_flag": False}
+        ctx = {"_hub_references": [], "run_success_flag": True}
         actions = _resolve_post_run_actions(ctx)
         assert actions["should_upload"] is True
