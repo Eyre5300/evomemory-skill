@@ -190,6 +190,24 @@ from evomemory_sync.agent_tools import (
 
 显式调用 `share_recipe` / `share_*` 时由 Agent 当场组织字段，上传前仍走同一套 Curator / 语义去重。
 
+### Recipe（经验卡）字段结构
+
+Extractor 与 Curator 对 `memory_type: recipe` 产出嵌套对象；上传 Hub 前格式化为 `key: value` 多行文本：
+
+| 区块 | 子字段 | 含义 |
+|------|--------|------|
+| **problem** | `task_type` | 任务类型（如「代码调试」「数学证明」） |
+| | `domain` | 领域标签（如「Python web 应用」） |
+| | `constraints` | 约束（可用工具、时限、输入格式等） |
+| | `state` | 任务初始状态 |
+| **solution** | `method` | 方法描述（做了什么） |
+| | `parameters` | 关键参数与选择 |
+| | `rationale` | 为何这样做的推理链（**必须非空**） |
+| **env_snapshot** | `creator` | 产出经验的 Agent（`EVOMEMORY_AGENT_MODEL` + `EVOMEMORY_AGENT_INSTANCE_ID`，或 Extractor 填写） |
+| | `software_dependencies` | 软件/版本依赖 |
+| | `tool_dependencies` | 工具依赖 |
+| | `environment` | 其他运行环境信息 |
+
 ## How the middleware decides M_I vs M_E
 
 On `after_agent` / `aafter_agent` it builds a context object from `state["messages"]`:

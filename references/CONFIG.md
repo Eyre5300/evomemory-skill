@@ -57,6 +57,8 @@ python scripts/setup.py wizard
 | `EVOMEMORY_SETUP_EMAIL` | No | - | Used by `scripts/setup.py` share / `install.py` instead of prompting (pair with password; for CI) |
 | `EVOMEMORY_SETUP_PASSWORD` | No | - | Used with `EVOMEMORY_SETUP_EMAIL` for non-interactive register/login |
 | `EVOMEMORY_AGENT_TOKEN` | No | - | Optional bearer token used only if `EVOMEMORY_API_TOKEN` is unset (e.g. dedicated agent key) |
+| `EVOMEMORY_AGENT_MODEL` | No | same as `EVOMEMORY_EXTRACTOR_MODEL` | Agent 模型名，写入经验卡 `env_snapshot.creator` |
+| `EVOMEMORY_AGENT_INSTANCE_ID` | No | - | Agent 实例/会话 ID（如 thread id），与模型名拼成 `creator` |
 | `EVOMEMORY_API_TIMEOUT_SECONDS` | No | 30 | Request timeout |
 | `EVOMEMORY_UPLOAD_MAX_BODY_BYTES` | No | `524288` | Max JSON upload body size (bytes) for `post_json`; raise if exceeded |
 | `EVOMEMORY_UPLOAD_DEDUP_ENABLED` | No | `true` | If `true`, skip LLM+upload when the same extraction context was successfully uploaded recently (see dedup window) |
@@ -98,6 +100,11 @@ Hub 使用 pgvector 按**相似度**排序，返回最相近的前 `top_k` 条�
 
 - **Ideation:** `goal`, `type` (promising/failed), `title`, `core_idea`, `requirements`（Hub 可接受可选 `embedding` / `embedding_model_id`，skill 不再发送）。
 - **Experiment:** `proposal_context`, `data_strategy`, `model_strategy`, `environment`（同上）。
+- **Recipe（经验卡）：** Hub 仍存文本列 `trigger` / `problem` / `solution` / `env_snapshot` / `result` / `tags`。Skill 的 Extractor / Curator 产出**嵌套 JSON**，上传前由 `recipe_format.prepare_recipe_hub_fields` 格式化为带标签的多行文本：
+  - **problem**：`task_type`（任务类型）、`domain`（领域）、`constraints`（约束）、`state`（初始状态）
+  - **solution**：`method`（做了什么）、`parameters`（关键参数）、`rationale`（决策理由，经验区别于技能的关键）
+  - **env_snapshot**：`creator`（模型名 + 实例 ID）、`software_dependencies`、`tool_dependencies`、`environment`
+  - 若 LLM 仍输出旧版平铺字符串，会原样写入对应列（向后兼容）。
 
 ## API 接口
 

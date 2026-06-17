@@ -19,8 +19,9 @@ Mapping overview (LLM JSON → json_to_* input → Hub POST body):
   ``environment_constraints``, optional parents → Hub experiment fields.
 - **Workflow**: ``title``, ``description``, ``prompt_templates``, ``tool_configuration``,
   optional parents → Hub workflow fields.
-- **Recipe**: ``trigger``, ``problem``, ``solution``, ``env_snapshot``, ``result``,
-  ``tags`` → lightweight experience card (highest value-per-token ratio).
+- **Recipe**: ``trigger``, structured ``problem`` (task_type/domain/constraints/state),
+  structured ``solution`` (method/parameters/rationale), structured ``env_snapshot``
+  (creator/software/tool/environment), ``result``, ``tags`` → Hub recipe columns (formatted text).
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ Type-specific minimum requirements:
 - Failed ideation: MUST include the concrete error text (Traceback / error message), the concrete failing path (what command/tool call failed), and concrete do-not-repeat advice. If any are missing, output {"skip": true, "reason": "failed ideation lacks error/path/advice"}.
 - Experiment: MUST include environment constraints (Python version + key library versions), concrete model parameters/configuration, and quantitative results (accuracy %, F1, BLEU, loss, latency ms, etc.). If missing, output {"skip": true, "reason": "experiment lacks env/config/metrics"}.
 - Workflow: prompt_templates MUST be complete, directly usable system instructions (not "让 AI 写代码" / "do something"). tool_configuration MUST be concrete. If not, output {"skip": true, "reason": "workflow templates/config not directly usable"}.
+- Recipe: problem/solution/env_snapshot MUST be objects with ALL subfields filled (see F below). **rationale** MUST explain why the solution was chosen (not just what was done). If any subfield is missing or rationale is empty, output {"skip": true, "reason": "recipe lacks structured problem/solution/env or rationale"}.
 
 Choose exactly one output type:
 
@@ -61,13 +63,37 @@ D) Completed experiment — substantive successful run. Keys (task_description /
 E) Workflow — reusable prompts + tool wiring (rare). Keys:
 {"memory_type":"workflow","title":"","description":"","prompt_templates":"","tool_configuration":"","parent_ideation_id":null,"parent_experiment_id":null}
 
-F) Recipe — lightweight atomic experience card (PREFERRED for most agent traces). Use when the trace contains a concrete problem-solution pair that other agents can directly reuse. Keys:
-{"memory_type":"recipe","trigger":"","problem":"","solution":"","env_snapshot":"","result":"","tags":"","parent_ideation_id":null,"parent_experiment_id":null}
+F) Recipe — lightweight atomic experience card (PREFERRED for most agent traces). Use when the trace contains a concrete problem-solution pair that other agents can directly reuse.
+
+**Structured fields (required shape):**
+
+problem MUST be an object:
+{"task_type":"","domain":"","constraints":"","state":""}
+- task_type: e.g. "代码调试", "数学证明", "网页操作"
+- domain: e.g. "Python web应用", "几何题", "电商网站"
+- constraints: available tools, time limits, input format, etc.
+- state: initial task state before the fix
+
+solution MUST be an object:
+{"method":"","parameters":"","rationale":""}
+- method: what was done (concrete steps/commands)
+- parameters: key parameters and choices (versions, flags, hyperparams)
+- rationale: WHY this approach (decision chain — this is what makes experience valuable vs a bare skill)
+
+env_snapshot MUST be an object:
+{"creator":"","software_dependencies":"","tool_dependencies":"","environment":""}
+- creator: agent identifier = model name + instance id (copy from context `_agent_metadata` if present; else infer model from trace)
+- software_dependencies: library/runtime versions (pip packages, Python version, etc.)
+- tool_dependencies: tools/MCP/skills used (e.g. execute, search_evomemory)
+- environment: other env context (OS, GPU, network, dataset path patterns — redact secrets)
+
+Full recipe keys:
+{"memory_type":"recipe","trigger":"","problem":{...},"solution":{...},"env_snapshot":{...},"result":"","tags":"","parent_ideation_id":null,"parent_experiment_id":null}
 
 Rules: Prefer **recipe** when the trace has a clear trigger→solution pattern. Prefer failed ideation only for complex multi-step failures. Prefer experiment only on clear success with full metrics. parent_* fields are optional — fill only when a Hub UUID is explicitly referenced in the trace (e.g. "based on ideation abc-123" or "from experiment def-456").
 
 Examples (shape only; redact real secrets in your output):
-{"memory_type":"recipe","trigger":"pytorch OOM during 7B fine-tuning","problem":"CUDA out of memory with batch_size=64 on RTX 3090","solution":"gradient_checkpointing=True + batch_size=32","env_snapshot":"transformers==4.40.0, torch==2.3.0, RTX 3090 24GB","result":"training succeeded, VRAM 24.1GB→18.3GB, speed -15%","tags":"pytorch,OOM,fine-tuning","parent_ideation_id":null,"parent_experiment_id":null}
+{"memory_type":"recipe","trigger":"pytorch OOM during 7B fine-tuning","problem":{"task_type":"代码调试","domain":"Python 深度学习训练","constraints":"仅可使用 execute 调参，单卡 24GB","state":"batch_size=64 时第一步 forward OOM"},"solution":{"method":"开启 gradient_checkpointing 并将 batch_size 降至 32","parameters":"gradient_checkpointing=True, batch_size=32, fp16=on","rationale":"OOM 来自激活峰值；checkpointing 换算力省显存，减半 batch 直接降低峰值"},"env_snapshot":{"creator":"Qwen2.5-72B + evo-run-abc","software_dependencies":"transformers==4.40.0, torch==2.3.0","tool_dependencies":"execute","environment":"CUDA 12.1, RTX 3090 24GB"},"result":"training succeeded, VRAM 24.1GB→18.3GB, speed -15%","tags":"pytorch,OOM,fine-tuning","parent_ideation_id":null,"parent_experiment_id":null}
 {"memory_type":"ideation","status":"failed","proposal_summary":"Tried X","trigger_conditions":"Tool error Y","do_not_repeat_notes":"Avoid Z","retrieval_tags":"x,y"}
 {"memory_type":"experiment","status":"completed","task_description":"Q","data_summary":"D","model_strategy":"M","environment_constraints":"E","parent_ideation_id":null,"hardware_requirements":null,"software_dependencies":null}
 """
@@ -117,12 +143,16 @@ def normalize_llm_extraction(raw: dict[str, Any]) -> dict[str, Any]:
         tags_val = out.get("tags")
         if isinstance(tags_val, list):
             out["tags"] = ",".join(str(t) for t in tags_val)
-        # Accept aliases for env_snapshot
-        if not str(out.get("env_snapshot") or "").strip():
-            for alt in ("environment", "env", "context"):
-                v = out.get(alt)
-                if v is not None and str(v).strip():
-                    out["env_snapshot"] = str(v).strip()
-                    break
+        # Keep nested problem/solution/env_snapshot dicts; formatting happens in recipe_format.prepare_recipe_hub_fields
+        for section in ("problem", "solution", "env_snapshot"):
+            if isinstance(out.get(section), str) and str(out[section]).strip().startswith("{"):
+                try:
+                    import json as _json
+
+                    parsed = _json.loads(str(out[section]))
+                    if isinstance(parsed, dict):
+                        out[section] = parsed
+                except Exception:
+                    pass
 
     return out

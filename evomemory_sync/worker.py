@@ -76,6 +76,8 @@ def main() -> int:
             record["_hub_references"] = hub_refs
         if ctx.get("_correcting_after_hub_failure"):
             record["_correcting_after_hub_failure"] = True
+        if ctx.get("_agent_metadata"):
+            record["_agent_metadata"] = ctx["_agent_metadata"]
 
         mem_type = str(record.get("memory_type") or record.get("memory_kind") or record.get("type") or "")
         logger.info("offline worker upload ctx_hash=%s memory_type=%s", ctx_hash, mem_type)

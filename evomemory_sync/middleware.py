@@ -18,7 +18,7 @@ from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 
-from .env_loader import env_bool as _env_bool, load_env
+from .env_loader import env_bool as _env_bool, env as _env, load_env
 from .run_outcome import assess_run_outcome
 from .sanitize import sanitize_context
 
@@ -198,6 +198,10 @@ def _build_context(state: AgentState) -> dict[str, Any]:
         "run_success_flag": outcome["run_success_flag"],
         "last_tool_messages": _last_tool_messages(messages),
         "_hub_references": list(hub_refs) if hub_refs else [],
+        "_agent_metadata": {
+            "model": _env("EVOMEMORY_AGENT_MODEL") or _env("EVOMEMORY_EXTRACTOR_MODEL"),
+            "instance_id": _env("EVOMEMORY_AGENT_INSTANCE_ID"),
+        },
     }
     # Hard redact before any temp file / worker / LLM sees the trace (do not rely on model self-sanitization).
     if _env_bool("EVOMEMORY_SYNC_SEND_RAW_CONTEXT", False):

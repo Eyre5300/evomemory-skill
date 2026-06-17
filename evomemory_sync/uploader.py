@@ -270,22 +270,19 @@ def put_json(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict
 
 def json_to_recipe_payload(data: dict[str, Any]) -> dict[str, Any]:
     """Map recipe extraction JSON to Hub upload payload."""
+    from .recipe_format import prepare_recipe_hub_fields
+
     mem_type = str(data.get("memory_type") or "").strip().lower()
     if mem_type != "recipe":
         raise ValueError("not a recipe JSON")
-    trigger = str(data.get("trigger") or "").strip()
-    problem = str(data.get("problem") or "").strip()
-    solution = str(data.get("solution") or "").strip()
-    env_snap = str(data.get("env_snapshot") or "").strip()
-    result = str(data.get("result") or "").strip()
-    tags = str(data.get("tags") or "").strip()
+    fields = prepare_recipe_hub_fields(data)
     out: dict[str, Any] = {
-        "trigger": trigger or "(unknown trigger)",
-        "problem": problem or "(unknown problem)",
-        "solution": solution or "(unknown solution)",
-        "env_snapshot": env_snap or "(none)",
-        "result": result or "(none)",
-        "tags": tags,
+        "trigger": fields["trigger"] or "(unknown trigger)",
+        "problem": fields["problem"] or "(unknown problem)",
+        "solution": fields["solution"] or "(unknown solution)",
+        "env_snapshot": fields["env_snapshot"] or "(none)",
+        "result": fields["result"] or "(none)",
+        "tags": fields["tags"],
     }
     # Optional parent linking
     pi = data.get("parent_ideation_id") or data.get("parent_ideation")
