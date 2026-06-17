@@ -1,176 +1,177 @@
-# EvoMemory Sync Skill
+# EvoMemory Sync Skill（中文说明）
 
-Connect **EvoScientist** (or any LangChain **deep agent** with the same middleware hook) to a shared **[EvoMemory Hub](https://evomem.club)** — a community store for **ideation** (including failed paths / pitfalls) and **experiment** memories (reusable setups and outcomes).
+将 **EvoScientist**（或任意 LangChain **deep agent**，只要能挂中间件）接入共享的 **[EvoMemory Hub](https://evomem.club)**：把执行过程沉淀为社区可复用的 **构思（ideation）** / **实验（experiment）** / **经验卡（recipe）** / **工作流（workflow）**。
 
-This repository ships:
+本仓库包含：
 
-1. A Python package **`evomemory_sync`** (install with `pip install -e .`).
-2. **Scripts** under `scripts/` for Hub login, CLI search, and package upgrade/uninstall.
-3. **Docs**: `SKILL.md` (Cursor/agent skill metadata + integration snippets), `references/CONFIG.md` (full env reference).
+1. Python 包 **`evomemory_sync`**（`pip install -e .` 安装到与你的 Agent 相同的虚拟环境）。
+2. `scripts/` 下的脚本：Hub 登录/配置、命令行语义检索、升级/卸载。
+3. 文档：`SKILL.md`（Skill 元信息 + 接入示例）、`references/CONFIG.md`（完整环境变量与 API 表）。
 
-### One-command setup (recommended)
+## 一键安装（推荐）
 
-After cloning or using **Cursor `/install-skill`**, run **once** from the skill repo root:
+无论你是 `git clone` 还是 Cursor 的 **`/install-skill`**，都在 skill 仓库根目录**只需执行一次**：
 
 ```bash
 python install.py
 ```
 
-This runs **`pip install -e .`** and then **`scripts/setup.py share`** against the **public Hub** (`https://evomem.club` by default): you enter **email** and **password** → the script registers or logs in → **`EVOMEMORY_API_TOKEN`** is saved to **`.env`**.
+它会：
 
-- Custom Hub: `python install.py --base-url https://your-hub`
-- TLS issues (HTTPS+IP): add `--insecure`
-- CI / no TTY: set `EVOMEMORY_SETUP_EMAIL` and `EVOMEMORY_SETUP_PASSWORD`, then run `install.py`
+- 执行 `pip install -e .`
+- 连接公有 Hub（默认 `https://evomem.club`），运行 `scripts/setup.py share`：输入邮箱/密码 → 自动注册或登录 → 将 `EVOMEMORY_API_TOKEN` 写入 `.env`
 
-See **`SKILL.md`** for the full first-run checklist (including extractor LLM keys for auto-upload).
+常见变体：
 
-### One-command update (already installed)
+- 自建 Hub：`python install.py --base-url https://your-hub`
+- HTTPS + IP 导致证书域名不匹配：追加 `--insecure`（仅调试用）
+- CI / 无交互：先设置 `EVOMEMORY_SETUP_EMAIL` 与 `EVOMEMORY_SETUP_PASSWORD` 再执行 `install.py`
 
-From the **same skill repo root**, in the **same Python env as your agent**:
+自动上传还需要配置 Extractor 的模型与 Key（见下文“配置”与 `SKILL.md`）。
+
+## 一键升级（已安装）
+
+在同一个 skill 仓库根目录、同一个 Python 虚拟环境下执行：
 
 ```bash
 python upgrade.py
 ```
 
-This runs **`git pull`** (if this folder is a git clone) and **`pip install -e .`**. Your **`.env` is not changed** — no need to log in again. Restart your agent after upgrading.
+它会执行 `git pull`（若是 git 克隆）+ `pip install -e .`，**不会改动你的 `.env`**，无需重新登录。升级后请重启 Agent/EvoScientist，让新包生效。
 
-### Upgrading from an older version
+## 从旧版本升级（重要）
 
-The **Hub** at `https://evomem.club` is updated on the server; **old skill clients still work** (upload/search), but you need a **local skill upgrade** to get newer client behavior (e.g. semantic dedup before upload, download counts when using `search_evomemory`). You do **not** need to register again or re-run `install.py` unless you want a new Hub account.
+Hub（`https://evomem.club`）服务端会持续更新，**旧 skill 客户端通常仍能上传/检索**；但要获取新客户端行为（例如：上传前语义去重、调用 `search_evomemory` 计下载量、Agent 策展改写正文等），需要升级本地 skill 包。
 
-| How you installed | What to do |
-|-------------------|------------|
-| **`git clone`** of this repo | `cd evomemory-skill` → `python upgrade.py` (or `git pull` then `pip install -e .`) |
-| **Clone without `upgrade.py` yet** (very old tree) | `git pull` → `python scripts/manage.py upgrade` or `pip install -e .` |
-| **Cursor `/install-skill` only** (no git folder) | `git clone https://gitee.com/MagniDrive/evomemory-skill.git` → copy your old `.env` into it if needed → `python upgrade.py` or `python install.py` if you never ran `pip` |
-| **Not sure where the skill lives** | `pip show evomemory_sync` in the **same venv as your agent**; clone repo above and run `python upgrade.py` there |
+| 你当初怎么装的 | 该怎么做 |
+|---|---|
+| 用 `git clone` 装的 | `cd evomemory-skill` → `python upgrade.py`（或 `git pull` 后 `pip install -e .`） |
+| 特别老的克隆（还没有 `upgrade.py`） | `git pull` → `python scripts/manage.py upgrade`（或直接 `pip install -e .`） |
+| 只用 Cursor `/install-skill`（没有 git 目录） | `git clone https://gitee.com/MagniDrive/evomemory-skill.git` → 需要的话把旧 `.env` 复制进来 → `python upgrade.py`；若从未跑过 `pip`，则先 `python install.py` |
+| 不确定 skill 在哪 | 在与你 Agent 相同的 venv 里运行 `pip show evomemory_sync`；然后按上面 git 仓库升级即可 |
 
-**Do not** run `python install.py` just to update code — it re-prompts for login and refreshes `.env` tokens. Use **`python upgrade.py`** instead.
+不要为了升级而运行 `python install.py`（它会重新提示登录并刷新 `.env` token）；升级请用 `python upgrade.py`。
 
-**After upgrading:** restart EvoScientist / your agent so the new `evomemory_sync` package is loaded.
-
-Optional new env vars (defaults work without editing `.env`): see `references/CONFIG.md` — e.g. `EVOMEMORY_UPLOAD_AGENT_CURATE`, `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`, `EVOMEMORY_RECORD_DOWNLOAD_ON_USE`.
+可选环境变量（不改 `.env` 也能跑）：见 `references/CONFIG.md`，例如 `EVOMEMORY_UPLOAD_AGENT_CURATE`、`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`、`EVOMEMORY_RECORD_DOWNLOAD_ON_USE`。
 
 ---
 
-## What this skill helps an agent do
+## 这个 skill 能帮 Agent 做什么
 
-| Capability | How it works | When it runs |
-|------------|----------------|----------------|
-| **Automatic post-run upload** | `EvoMemorySyncMiddleware` runs **after each agent turn** (`after_agent` / `aafter_agent`). It serializes the message trace (task, tool code/commands, tool errors), spawns a **detached** subprocess `python -m evomemory_sync.worker`, which calls an **extractor LLM** (OpenAI-compatible chat) to emit Hub-shaped JSON, then `upload_memory_record` **POST**s to `/memory/ideation/upload` or `/memory/experiment/upload`. | Every completed run, if `EVOMEMORY_API_TOKEN` is set and sync is not disabled. |
-| **Semantic search during execution** | LangChain tool **`search_evomemory`** (`evomemory_sync.tools`) calls `POST /memory/{ideation\|experiment}/search` and returns a **text summary** of similar community memories. | Whenever the model chooses to call the tool (you must **inject** it into `tools`). |
-| **Explicit “reflect & archive”** | Async helpers **`share_failed_ideation`** / **`share_successful_experiment`** (`evomemory_sync.agent_tools`) POST directly to the same upload endpoints. Optional **`AGENT_SYSTEM_PROMPT_EXTENSION`** text for system prompts. | When your agent logic or orchestration calls these functions (e.g. end-of-task reflection). |
-| **CLI search (human or CI)** | `scripts/search.py` performs the same vector search from the terminal. | Manual debugging or batch use. |
+| 能力 | 工作方式 | 触发时机 |
+|---|---|---|
+| **运行后自动上传** | `EvoMemorySyncMiddleware` 在每次 run 结束后触发（`after_agent`/`aafter_agent`）。它会序列化消息 trace（任务、工具调用代码/命令、错误等），启动一个**脱离主进程**的离线子进程 `python -m evomemory_sync.worker`：子进程调用 **Extractor LLM**（OpenAI 兼容 Chat API）生成 Hub 结构化 JSON，然后通过 `upload_memory_record` 上传/更新/跳过。 | 每次 run 结束，且设置了 `EVOMEMORY_API_TOKEN`，并且未关闭同步。 |
+| **运行中语义检索** | LangChain 工具 **`search_evomemory`**（`evomemory_sync.tools`）调用 `POST /memory/{kind}/search`，返回相似社区记忆的文本摘要。 | 模型在执行中主动调用（需注入到 `tools`）。 |
+| **显式反思归档** | `evomemory_sync.agent_tools` 提供异步函数 `share_failed_ideation` / `share_successful_experiment` / `share_recipe` / `share_workflow` 等，供你在任务结束时显式上传（与中间件自动上传互补）。 | 由你的编排逻辑或 Agent 主动调用。 |
+| **CLI 检索** | `scripts/search.py` 在终端执行同样的向量检索。 | 人工调试或批处理。 |
 
-**Not** included: pushing arbitrary local JSON files via extra CLIs — uploads go through the **middleware**, **`upload_memory_record`**, or **`agent_tools`**.
+注意：不再提供“把任意本地 JSON 文件直接 push”那类额外 CLI；上传入口统一通过 **middleware** / **`upload_memory_record`** / **`agent_tools`**。
 
 ---
 
-## Architecture (short)
+## 架构（简版）
 
 ```text
-Agent run ends
-    → EvoMemorySyncMiddleware._finalize()
-        → temp JSON context (task, code, errors, …)
-        → subprocess: python -m evomemory_sync.worker <tmp.json>
-            → extractor LLM (sanitized context) → JSON { memory_type, … }
-            → uploader.post_json → Hub REST
+Agent run 结束
+  → EvoMemorySyncMiddleware._finalize()
+    → 写入临时 JSON 上下文（任务、代码、错误…）
+    → 启动离线进程：python -m evomemory_sync.worker <tmp.json>
+      → Extractor LLM（脱敏后的上下文）→ JSON { memory_type, ... }
+      → 上传：Hub REST（create/update/skip）
 ```
 
-Extractor prompts and JSON schema live in **`evomemory_sync/extraction_fields.py`** (`EXTRACTOR_SYSTEM_PROMPT`). Sensitive patterns in text are **redacted** before the extractor sees them (`_sanitize_*`).
+Extractor 的提示词与 JSON 结构约束在 `evomemory_sync/extraction_fields.py`（`EXTRACTOR_SYSTEM_PROMPT`）。敏感信息会在进入 Extractor 前执行脱敏（`sanitize_*`）。
 
 ---
 
-## Installation
+## 安装方式汇总
 
-### 1) Recommended: `python install.py` (see top of this README)
+### 1) 推荐：`python install.py`（见本 README 顶部）
 
-### 2) Optional: install as a Cursor / agent “skill”
+### 2) Cursor `/install-skill`（可选）
 
 ```text
 /install-skill github.com/<org>/evomemory-skill
 ```
 
-That step **does not** run `pip` or create `.env` — run **`python install.py`** once from the cloned skill folder (see above).
+这一步只会下载仓库，不会执行 `pip`、也不会生成 `.env`；仍需在 skill 目录运行一次 `python install.py`。
 
-### 3) Manual package install only
+### 3) 仅安装 Python 包（手动）
 
 ```bash
 pip install -e .
 ```
 
-Use the **same virtualenv** as your agent (e.g. EvoScientist). Dependencies: **`pyproject.toml`**.
+务必使用与你 Agent 相同的虚拟环境。依赖见 `pyproject.toml`。
 
 ---
 
-## Configuration
+## 配置
 
-### Where `.env` is loaded
+### `.env` 加载顺序
 
-`evomemory_sync.env_loader.load_env()` loads both files if present, in order:
+`evomemory_sync.env_loader.load_env()` 会按顺序加载（若存在）：
 
-1. **`<skill-repo>/.env`**
-2. **`scripts/.env`**
+1. `<skill-repo>/.env`
+2. `scripts/.env`
 
-`load_dotenv(..., override=False)` means **variables already set by the first file are not overwritten** by the second — put canonical secrets in the repo root `.env`.
+`override=False` 表示 **前一个文件中已经设置的变量不会被后一个覆盖**。建议把权威的 token/密钥放在仓库根目录 `.env`。
 
-`scripts/setup.py` defaults to writing **`../.env`** (repo root). Keep secrets out of git — **`.env` and `scripts/.env` are gitignored**.
+`scripts/setup.py` 默认写入 `../.env`（仓库根目录）。注意：`.env` 与 `scripts/.env` 都已加入 `.gitignore`，不要提交密钥。
 
-### 1) Hub URL and token
+### 1) Hub 地址与 Token
 
-Interactive:
+交互式向导：
 
 ```bash
 cd scripts
 python setup.py wizard
 ```
 
-Or non-interactive browse/share; see `python setup.py --help`.
+至少需要：
 
-You need at least:
+| 变量 | 用途 |
+|---|---|
+| `EVOMEMORY_API_BASE_URL` | Hub 地址，例如 `https://evomem.club` |
+| `EVOMEMORY_API_TOKEN` | JWT（读写；自动上传与部分检索需要） |
 
-| Variable | Purpose |
-|----------|---------|
-| `EVOMEMORY_API_BASE_URL` | Hub origin, e.g. `https://evomem.club` |
-| `EVOMEMORY_API_TOKEN` | JWT for **read + write** (required for uploads and many searches) |
+### 2) 自动上传（middleware + worker）
 
-### 2) Automatic upload (middleware + worker)
+除 Hub token 外，还需要一个 OpenAI 兼容的 Chat API（用于 Extractor / Curator）：
 
-Requires **Hub token** plus an **OpenAI-compatible chat** API for extraction:
+| 变量 | 用途 |
+|---|---|
+| `EVOMEMORY_EXTRACTOR_MODEL` | 模型 ID |
+| `EVOMEMORY_EXTRACTOR_API_KEY` 或 `SILICONFLOW_API_KEY` | API Key |
+| `EVOMEMORY_EXTRACTOR_BASE_URL` | 可选，默认 `https://api.siliconflow.cn/v1` |
 
-| Variable | Purpose |
-|----------|---------|
-| `EVOMEMORY_EXTRACTOR_MODEL` | Chat model id |
-| `EVOMEMORY_EXTRACTOR_API_KEY` or `SILICONFLOW_API_KEY` | API key |
-| `EVOMEMORY_EXTRACTOR_BASE_URL` | Optional; default `https://api.siliconflow.cn/v1` |
-
-Disable middleware without removing it:
+不移除中间件也可关闭同步：
 
 ```env
 EVOMEMORY_SYNC_ENABLED=false
 ```
 
-If `EVOMEMORY_API_TOKEN` is missing, the middleware **does nothing** (logged at debug).
+若缺少 `EVOMEMORY_API_TOKEN`，中间件会静默不工作（debug 日志提示）。
 
-### 3) Tool / search tuning (optional)
+### 3) 检索/工具可选调参
 
-`search_evomemory` and `scripts/search.py` respect:
+`search_evomemory` 与 `scripts/search.py` 支持：
 
-- `EVOMEMORY_SEARCH_TOP_K` (default 10, max 100)
-- `EVOMEMORY_SEARCH_MIN_SIMILARITY` (0–1)
+- `EVOMEMORY_SEARCH_TOP_K`（默认 10，最大 100）
+- `EVOMEMORY_SEARCH_MIN_SIMILARITY`（0–1）
 - `EVOMEMORY_API_TIMEOUT_SECONDS`
 
-Full tables: **`references/CONFIG.md`**.
+完整表格见 `references/CONFIG.md`。
 
 ---
 
-## Using with an agent (EvoScientist-style)
+## 与 Agent 集成（EvoScientist 风格）
 
-Upstream `create_cli_agent` does **not** take `middleware=`. Build a list `mw`, register **`EvoMemorySyncMiddleware()`**, pass `mw` into your **`load_mcp_and_build_kwargs`**, and append **`search_evomemory`** to `kwargs["tools"]`.
+上游 `create_cli_agent` 通常不接收 `middleware=` 参数。做法是：构造 `mw` 列表，加入 `EvoMemorySyncMiddleware()`，将 `mw` 传入 `load_mcp_and_build_kwargs`，再把 `search_evomemory` 等工具注入 `kwargs["tools"]`。
 
-Copy-paste-ready patterns and notes are in **`SKILL.md`**.
+可复制的接入片段与注意事项见 `SKILL.md`。
 
-For explicit async archive from your own runner:
+如需在你自己的 runner 中显式归档：
 
 ```python
 from evomemory_sync.agent_tools import (
@@ -180,40 +181,31 @@ from evomemory_sync.agent_tools import (
 )
 ```
 
-Optional env aliases for `agent_tools` only: `EVOMEMORY_API_URL` (override base), `EVOMEMORY_AGENT_TOKEN` (if `EVOMEMORY_API_TOKEN` is unset).
+仅对 `agent_tools` 生效的可选别名：`EVOMEMORY_API_URL`（覆盖 base）、`EVOMEMORY_AGENT_TOKEN`（当 `EVOMEMORY_API_TOKEN` 未设置时作为 Bearer）。
 
 ---
 
-## CLI commands
+## CLI 脚本
 
-| Script | Role |
-|--------|------|
-| `scripts/setup.py` | `wizard` / `browse` / `share` — write Hub URL and token to `.env` |
-| `scripts/search.py` | `ideation` \| `experiment` + query; `--top-k`, `--min-similarity` |
-| `scripts/manage.py` | `upgrade` (`git pull` + `pip install -e .`), `uninstall` (strip injected imports + uninstall package) |
+| 脚本 | 作用 |
+|---|---|
+| `scripts/setup.py` | `wizard` / `browse` / `share`：写入 Hub URL 与 token 到 `.env` |
+| `scripts/search.py` | `ideation` / `experiment` / `workflow` / `recipe` + query；支持 `--top-k`、`--min-similarity` |
+| `scripts/manage.py` | `upgrade`（`git pull` + `pip install -e .`）、`uninstall`（移除注入 + 卸载包） |
 
-**User-facing shortcut:** `python upgrade.py` (same as `python scripts/manage.py upgrade`).
+快捷方式：`python upgrade.py`（等价于 `python scripts/manage.py upgrade`）。
 
 ---
 
-## Tests
+## 测试
 
 ```bash
 pip install -e ".[dev]"
-# run tests from repo root as needed
+# 在仓库根目录按需执行 pytest
 ```
 
 ---
 
-## License
+## 许可证
 
 Apache 2.0
-
----
-
-## 中文摘要
-
-- **本 skill 能做什么**：① 每次 Agent 跑完后**自动**把对话/trace 交给抽取模型，整理成 ideation/experiment JSON 并**上传到 Hub**（`EvoMemorySyncMiddleware` + `worker`）；② 给模型注入 **`search_evomemory` 工具**，执行中**主动语义检索**社区记忆；③ 提供 **`agent_tools`** 里的异步函数，供你在任务结束时**显式**归档失败构思或成功实验；④ 提供 **`scripts/search.py`** 命令行检索。
-- **如何配置**：在 skill 仓库根目录执行 `pip install -e .`，再用 `cd scripts && python setup.py wizard` 写入 **`EVOMEMORY_API_BASE_URL`** 与 **`EVOMEMORY_API_TOKEN`**；自动上传还需配置 **`EVOMEMORY_EXTRACTOR_*`**（或 `SILICONFLOW_API_KEY`）。环境变量详解见 **`references/CONFIG.md`**，接入示例见 **`SKILL.md`**。
-- **如何更新**：在 skill 根目录执行 **`python upgrade.py`**（`git pull` + 重装包；不修改 `.env`）。升级后重启 Agent。
-- **旧版用户**：Hub 服务端已更新，旧 skill 仍可用；要获得上传去重、检索计下载量等新能力，请按上表升级本地包。**不必**为升级而重跑 `install.py`（那会重新登录）。若只有 Cursor `/install-skill`、没有 git 目录，请先 `git clone https://gitee.com/MagniDrive/evomemory-skill.git`，复制原 `.env` 后执行 `python upgrade.py`。详见上文 **Upgrading from an older version**。

@@ -1,22 +1,22 @@
 ---
 name: evomemory-sync
-description: Sync EvoScientist research memories to a shared EvoMemory Hub. Includes a LangChain AgentMiddleware for automatic post-run upload, plus CLI setup and vector search. Use when the user wants community memory sharing, Hub configuration, or semantic search over ideation/experiment memories.
-tags: [memory, sharing, collaboration, community]
-compatibility: Python 3.11+, pip; network access to Hub (register/login) and optional SiliconFlow or other OpenAI-compatible API for the extractor.
+description: 将 EvoScientist/Agent 的执行过程自动沉淀到 EvoMemory Hub。包含 LangChain 中间件（run 结束后自动上传）与 CLI 配置/语义检索工具。
+tags: [memory, sharing, collaboration, community, 中文]
+compatibility: Python 3.11+；需要可访问 Hub（注册/登录）与可选的 OpenAI 兼容 Chat API（Extractor/Curator）。
 ---
 
-# EvoMemory Sync Skill
+# EvoMemory Sync Skill（中文说明）
 
-Connect **EvoScientist** (or any LangChain deep agent built the same way) to a shared **EvoMemory Hub** — a community pool for research ideation and experiment memories.
+将 **EvoScientist**（或任意 LangChain deep agent）接入共享的 **EvoMemory Hub**：把每次 run 的过程沉淀为可检索、可复用的社区记忆（ideation / experiment / recipe / workflow）。
 
-This repository is two things:
+本仓库（skill）包含两部分：
 
-1. **Python package `evomemory_sync`** — `EvoMemorySyncMiddleware` runs **after each agent invocation**, uses an LLM to turn the message trace into structured JSON, then **POSTs silently** to the Hub (when `EVOMEMORY_API_TOKEN` and extractor settings are set).
-2. **CLI helpers** — `scripts/setup.py` (token + base URL) and `scripts/search.py` (semantic search).
+1. **Python 包 `evomemory_sync`**：`EvoMemorySyncMiddleware` 在每次 run 结束后触发，使用 LLM 将 trace 转为结构化 JSON，并静默上传到 Hub（需配置 `EVOMEMORY_API_TOKEN` 与 Extractor/Curator）。
+2. **CLI 工具**：`scripts/setup.py`（配置 token 与 base URL）与 `scripts/search.py`（语义检索）。
 
 **Default public Hub:** `https://evomem.club`（客户端直接使用该 HTTPS 地址，无 HTTP / IP 自动降级）。
 
-## First-time setup (after `/install-skill` or git clone)
+## 首次安装（Cursor `/install-skill` 或 `git clone` 后）
 
 Cursor **`/install-skill github.com/<org>/evomemory-skill`** (or a Gitee mirror) **only downloads** the skill into your skills folder — it does **not** run `pip` or create `.env`. You must run **one** command once from the **skill repository root** (the folder that contains `SKILL.md`):
 
@@ -32,7 +32,7 @@ python scripts/install.py
 # Windows:     powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-This will:
+它会：
 
 1. **`pip install -e .`** — install `evomemory_sync` into the current Python environment.
 2. **`python scripts/setup.py share --base-url https://evomem.club`** — prompt for **email** and **password**, call **`/auth/register`** then **`/auth/login`** on the Hub (same as the VPS-deployed API), and write **`EVOMEMORY_API_BASE_URL`** + **`EVOMEMORY_API_TOKEN`** to **`<skill-root>/.env`**.
@@ -49,7 +49,7 @@ python install.py --base-url https://your-hub.example.com
 
 **Agents:** After the user installs the skill, if they have not configured Hub yet, **run the `install.py` command above in a terminal** from the skill directory (or ask the user to run it), then continue with extractor env vars as in the sections below.
 
-## Update (already installed)
+## 升级（已安装）
 
 ```bash
 python upgrade.py
@@ -68,7 +68,7 @@ Runs **`git pull`** + **`pip install -e .`**; does **not** overwrite `.env`. Res
 
 Optional tuning: `EVOMEMORY_UPLOAD_AGENT_CURATE`, `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`, `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` in `.env` (`references/CONFIG.md`).
 
-## Install the package (manual)
+## 手动安装 Python 包
 
 If you already ran `install.py`, skip this. Otherwise from the skill root:
 
@@ -78,9 +78,9 @@ pip install -e .
 
 Ensure EvoScientist’s environment can import `evomemory_sync` (same venv as `EvoScientist`).
 
-## Quick Start
+## 快速开始
 
-### 1. Configure Hub access
+### 1）配置 Hub 访问
 
 ```bash
 cd scripts
@@ -95,26 +95,26 @@ Writes `.env` with `EVOMEMORY_API_BASE_URL` and optionally `EVOMEMORY_API_TOKEN`
 
 默认公有 Hub 的 **存储形式** 为 `https://evomem.club`（`EVOMEMORY_API_BASE_URL`）。脚本与同步客户端使用规范 **HTTPS 直连**（无 HTTP / 备用 IP 自动降级）；自建 Hub 请填写你的域名或 `http://localhost:…`。历史备案阶段的探测说明见 `references/VPS_INTEGRATION.md`（默认已关闭）。
 
-### 2. Configure the extractor (middleware)
+### 2）配置 Extractor（自动总结与上传）
 
-The middleware calls an **OpenAI-compatible** chat API (default base URL targets SiliconFlow).
+中间件会调用 **OpenAI 兼容**的 Chat API（默认 base URL 指向 SiliconFlow）。
 
-| Variable | Required for auto-upload | Description |
+| 变量 | 自动上传必需 | 说明 |
 |----------|---------------------------|-------------|
-| `EVOMEMORY_EXTRACTOR_MODEL` | Yes | Chat model id for summarization |
-| `EVOMEMORY_EXTRACTOR_API_KEY` or `SILICONFLOW_API_KEY` | Yes | API key |
-| `EVOMEMORY_EXTRACTOR_BASE_URL` | No | Default `https://api.siliconflow.cn/v1` |
-| `EVOMEMORY_EXTRACTOR_TIMEOUT_SECONDS` | No | Overrides timeout for extractor calls |
-| `EVOMEMORY_SYNC_ENABLED` | No | Set `0` / `false` to disable middleware |
+| `EVOMEMORY_EXTRACTOR_MODEL` | 是 | 模型 ID |
+| `EVOMEMORY_EXTRACTOR_API_KEY` 或 `SILICONFLOW_API_KEY` | 是 | API Key |
+| `EVOMEMORY_EXTRACTOR_BASE_URL` | 否 | 默认 `https://api.siliconflow.cn/v1` |
+| `EVOMEMORY_EXTRACTOR_TIMEOUT_SECONDS` | 否 | 超时 |
+| `EVOMEMORY_SYNC_ENABLED` | 否 | 设为 `0` / `false` 可禁用中间件 |
 
-### 3. CLI search (unchanged)
+### 3）CLI 语义检索
 
 ```bash
 python scripts/search.py ideation "machine learning optimization"
 python scripts/search.py experiment "transformer training" --top-k 20 --min-similarity 0.35
 ```
 
-## Integration snippet (EvoScientist)
+## 接入示例（EvoScientist）
 
 Upstream `create_cli_agent` **does not** accept a `middleware=` keyword. You inject the middleware **where the list `mw` is built**, then pass that list into `load_mcp_and_build_kwargs` (same pattern as `ToolErrorHandlerMiddleware` / `create_memory_middleware`).
 

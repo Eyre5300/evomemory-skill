@@ -1,10 +1,10 @@
-# EvoMemory Configuration Reference
+# EvoMemory 配置参考（skill 端）
 
-**Default public Hub:** `https://evomem.club` (deployed from `vps_bundle`). Use this URL when connecting to the shared EvoMemory server.
+**默认公有 Hub**：`https://evomem.club`（由 `vps_bundle` 部署）。在连接共享 EvoMemory 服务器时，优先使用该 URL。
 
-## Connection Setup
+## 连接配置
 
-### Browse Mode (Read-only)
+### Browse 模式（只读）
 
 Run:
 ```bash
@@ -12,12 +12,12 @@ python scripts/setup.py browse --base-url https://evomem.club
 # Or: python scripts/setup.py browse --base-url https://<your-hub>
 ```
 
-This saves to `.env`:
+会写入 `.env`：
 ```env
 EVOMEMORY_API_BASE_URL=https://evomem.club
 ```
 
-### Share Mode (Read + Write)
+### Share 模式（读 + 写 / 可上传）
 
 Run:
 ```bash
@@ -25,35 +25,35 @@ python scripts/setup.py share --base-url https://evomem.club
 # Or: python scripts/setup.py share --base-url https://<your-hub>
 ```
 
-This will:
-1. Prompt for email and password
-2. Try to register; if email exists, login instead
-3. Save both URL and token to `.env`:
+它会：
+1. 提示输入邮箱和密码
+2. 先尝试注册；若邮箱已存在则改为登录
+3. 将 Hub URL 与 token 写入 `.env`：
 
 ```env
 EVOMEMORY_API_BASE_URL=https://<your-hub>
 EVOMEMORY_API_TOKEN=eyJ...
 ```
 
-### Interactive Wizard (Beginner-friendly)
+### 交互式向导（适合新手）
 
 Run:
 ```bash
 python scripts/setup.py wizard
 ```
 
-This will ask:
-- Browse (read-only) or Share (upload)
-- Hub URL (you paste it yourself; no default is shown)
-- Or Public Hub (invite code): you paste a code given by the maintainer (no domain is shown)
+它会询问：
+- 选择 Browse（只读）或 Share（可上传）
+- Hub URL（你自行粘贴；不会显示默认值）
+- 或 Public Hub（邀请码模式）：粘贴维护者给你的 code（不显示域名）
 
-## Environment Variables
+## 环境变量
 
-| Variable | Required | Default | Description |
+| 变量 | 是否必需 | 默认值 | 说明 |
 |----------|----------|---------|-------------|
-| `EVOMEMORY_API_BASE_URL` | Yes | - | EvoMemory Hub base URL (e.g. `https://evomem.club`) |
+| `EVOMEMORY_API_BASE_URL` | 是 | - | Hub base URL（例如 `https://evomem.club`） |
 | `EVOMEMORY_API_URL` | No | - | Optional override of base URL for `evomemory_sync.agent_tools` (takes precedence over `EVOMEMORY_API_BASE_URL`) |
-| `EVOMEMORY_API_TOKEN` | For write | - | JWT access token |
+| `EVOMEMORY_API_TOKEN` | 写入必需 | - | JWT access token（上传/删除/改可见性等需要） |
 | `EVOMEMORY_SETUP_EMAIL` | No | - | Used by `scripts/setup.py` share / `install.py` instead of prompting (pair with password; for CI) |
 | `EVOMEMORY_SETUP_PASSWORD` | No | - | Used with `EVOMEMORY_SETUP_EMAIL` for non-interactive register/login |
 | `EVOMEMORY_AGENT_TOKEN` | No | - | Optional bearer token used only if `EVOMEMORY_API_TOKEN` is unset (e.g. dedicated agent key) |
@@ -82,9 +82,9 @@ This will ask:
 | `EVOMEMORY_EXTRACTOR_BASE_URL` | No | `https://api.siliconflow.cn/v1` | Chat Completions base URL |
 | `EVOMEMORY_EXTRACTOR_TIMEOUT_SECONDS` | No | falls back to `EVOMEMORY_API_TIMEOUT_SECONDS` | Extractor HTTP timeout |
 
-## Auto-upload middleware (`evomemory_sync`)
+## 自动上传中间件（`evomemory_sync`）
 
-When `EvoMemorySyncMiddleware` is registered on the agent and `EVOMEMORY_API_TOKEN` is set, each completed run spawns an offline worker that calls an LLM to produce Hub-shaped JSON, then uploads via **`upload_memory_record`**. Upload path: **agent curator** (default) searches Hub for similar cards, an LLM chooses **create / update / skip** and rewrites the draft; if curator is off or fails, **rule-based semantic dedup** applies (`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`).
+当 Agent 注册了 `EvoMemorySyncMiddleware` 且设置了 `EVOMEMORY_API_TOKEN`，每次 run 结束都会启动离线 worker：调用 LLM 生成 Hub 结构化 JSON，并通过 **`upload_memory_record`** 上传。上传路径默认为 **Agent Curator**：先检索 Hub 相似卡，再由 LLM 决定 **create / update / skip** 并润色正文；若 Curator 关闭或失败，则回退到固定阈值的语义去重（`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`）。
 
 **Post-run routing:** cited Hub experience (`[HUB_REF:uuid]` in the trace) always triggers **`record-download`** (success or failure). **Verify** only when cited and the run **succeeded** (`run_success_flag`: no tool/code errors; self-check/ground-truth passed when applicable). Upload only when: cited + failed (correction, curator prefers update), or not cited + succeeded. Not cited + failed → no upload. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
 
@@ -99,9 +99,9 @@ Hub 使用 pgvector 按**相似度**排序，返回最相近的前 `top_k` 条�
 - **Ideation:** `goal`, `type` (promising/failed), `title`, `core_idea`, `requirements`（Hub 可接受可选 `embedding` / `embedding_model_id`，skill 不再发送）。
 - **Experiment:** `proposal_context`, `data_strategy`, `model_strategy`, `environment`（同上）。
 
-## API Endpoints
+## API 接口
 
-The EvoMemory Hub (e.g. evomem.club) exposes:
+EvoMemory Hub（例如 `evomem.club`）对外暴露：
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
@@ -148,23 +148,23 @@ curl -s "https://your-hub.example.com/internal/maintenance/embeddings/zero-stats
   -H "X-Maintenance-Key: $MAINTENANCE_API_KEY"
 ```
 
-## Troubleshooting
+## 排错
 
-### "EVOMEMORY_API_BASE_URL not set"
+### “EVOMEMORY_API_BASE_URL not set”
 
 Run setup first (e.g. connect to evomem.club):
 ```bash
 python scripts/setup.py browse --base-url https://evomem.club
 ```
 
-### "401 missing bearer token" on upload
+### 上传时报 “401 missing bearer token”
 
 You need to login (e.g. for evomem.club):
 ```bash
 python scripts/setup.py share --base-url https://evomem.club
 ```
 
-### "429 rate limit exceeded"
+### “429 rate limit exceeded”
 
 The hub limits requests per user. Wait a moment and retry.
 
