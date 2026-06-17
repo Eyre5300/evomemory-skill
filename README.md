@@ -24,6 +24,16 @@ This runs **`pip install -e .`** and then **`scripts/setup.py share`** against t
 
 See **`SKILL.md`** for the full first-run checklist (including extractor LLM keys for auto-upload).
 
+### One-command update (already installed)
+
+From the **same skill repo root**, in the **same Python env as your agent**:
+
+```bash
+python upgrade.py
+```
+
+This runs **`git pull`** (if this folder is a git clone) and **`pip install -e .`**. Your **`.env` is not changed** — no need to log in again.
+
 ---
 
 ## What this skill helps an agent do
@@ -165,6 +175,8 @@ Optional env aliases for `agent_tools` only: `EVOMEMORY_API_URL` (override base)
 | `scripts/search.py` | `ideation` \| `experiment` + query; `--top-k`, `--min-similarity` |
 | `scripts/manage.py` | `upgrade` (`git pull` + `pip install -e .`), `uninstall` (strip injected imports + uninstall package) |
 
+**User-facing shortcut:** `python upgrade.py` (same as `python scripts/manage.py upgrade`).
+
 ---
 
 ## Tests
@@ -186,3 +198,4 @@ Apache 2.0
 
 - **本 skill 能做什么**：① 每次 Agent 跑完后**自动**把对话/trace 交给抽取模型，整理成 ideation/experiment JSON 并**上传到 Hub**（`EvoMemorySyncMiddleware` + `worker`）；② 给模型注入 **`search_evomemory` 工具**，执行中**主动语义检索**社区记忆；③ 提供 **`agent_tools`** 里的异步函数，供你在任务结束时**显式**归档失败构思或成功实验；④ 提供 **`scripts/search.py`** 命令行检索。
 - **如何配置**：在 skill 仓库根目录执行 `pip install -e .`，再用 `cd scripts && python setup.py wizard` 写入 **`EVOMEMORY_API_BASE_URL`** 与 **`EVOMEMORY_API_TOKEN`**；自动上传还需配置 **`EVOMEMORY_EXTRACTOR_*`**（或 `SILICONFLOW_API_KEY`）。环境变量详解见 **`references/CONFIG.md`**，接入示例见 **`SKILL.md`**。
+- **如何更新**：在 skill 根目录执行 **`python upgrade.py`**（`git pull` + 重装包；不修改 `.env`）。

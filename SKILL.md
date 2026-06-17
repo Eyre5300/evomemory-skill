@@ -49,6 +49,14 @@ python install.py --base-url https://your-hub.example.com
 
 **Agents:** After the user installs the skill, if they have not configured Hub yet, **run the `install.py` command above in a terminal** from the skill directory (or ask the user to run it), then continue with extractor env vars as in the sections below.
 
+## Update (already installed)
+
+```bash
+python upgrade.py
+```
+
+Runs **`git pull`** + **`pip install -e .`**; does **not** overwrite `.env`. Restart your agent after upgrading.
+
 ## Install the package (manual)
 
 If you already ran `install.py`, skip this. Otherwise from the skill root:
