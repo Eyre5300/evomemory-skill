@@ -1,50 +1,48 @@
-"""Tests for evomemory_sync.middleware — context building and verify-vs-upload routing."""
+"""Tests for evomemory_sync.middleware — post-run routing."""
 
 import os
 import sys
-from unittest import mock
 
-# Ensure the package is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from evomemory_sync.middleware import _should_verify_instead_of_upload
+from evomemory_sync.middleware import _resolve_post_run_actions
 
 
-class TestShouldVerifyInsteadOfUpload:
-    """Logic: hub_refs + no errors -> verify; else -> upload."""
-
-    def test_hub_refs_no_errors_should_verify(self):
+class TestResolvePostRunActions:
+    def test_hub_refs_success_verify_no_upload(self):
         ctx = {
             "_hub_references": ["abc-123", "def-456"],
             "has_tool_error_flag": False,
         }
-        should_verify, refs = _should_verify_instead_of_upload(ctx)
-        assert should_verify is True
-        assert refs == ["abc-123", "def-456"]
+        actions = _resolve_post_run_actions(ctx)
+        assert actions["record_download_ids"] == ["abc-123", "def-456"]
+        assert actions["verify_ids"] == ["abc-123", "def-456"]
+        assert actions["should_upload"] is False
 
-    def test_hub_refs_with_errors_should_upload(self):
+    def test_hub_refs_failure_record_download_upload_no_verify(self):
         ctx = {
             "_hub_references": ["abc-123"],
             "has_tool_error_flag": True,
         }
-        should_verify, refs = _should_verify_instead_of_upload(ctx)
-        assert should_verify is False
-        assert refs == ["abc-123"]
+        actions = _resolve_post_run_actions(ctx)
+        assert actions["record_download_ids"] == ["abc-123"]
+        assert actions["verify_ids"] == []
+        assert actions["should_upload"] is True
+        assert ctx["_correcting_after_hub_failure"] is True
 
-    def test_no_hub_refs_should_upload(self):
+    def test_no_hub_refs_success_upload(self):
         ctx = {"has_tool_error_flag": False}
-        should_verify, refs = _should_verify_instead_of_upload(ctx)
-        assert should_verify is False
-        assert refs == []
+        actions = _resolve_post_run_actions(ctx)
+        assert actions["record_download_ids"] == []
+        assert actions["verify_ids"] == []
+        assert actions["should_upload"] is True
 
-    def test_empty_hub_refs_should_upload(self):
+    def test_no_hub_refs_failure_no_upload(self):
+        ctx = {"has_tool_error_flag": True}
+        actions = _resolve_post_run_actions(ctx)
+        assert actions["should_upload"] is False
+
+    def test_empty_hub_refs_success_upload(self):
         ctx = {"_hub_references": [], "has_tool_error_flag": False}
-        should_verify, refs = _should_verify_instead_of_upload(ctx)
-        assert should_verify is False
-        assert refs == []
-
-    def test_none_hub_refs_treated_as_empty(self):
-        ctx = {"_hub_references": None, "has_tool_error_flag": False}
-        should_verify, refs = _should_verify_instead_of_upload(ctx)
-        assert should_verify is False
-        assert refs == []
+        actions = _resolve_post_run_actions(ctx)
+        assert actions["should_upload"] is True

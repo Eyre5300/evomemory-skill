@@ -60,6 +60,7 @@ Rules:
 - Make text **more specific** (versions, commands, metrics). Remove fluff. Do not invent facts absent from the draft/trace.
 - If others' cards already solve the same problem and the user has nothing new, choose **skip**.
 - If the draft is low quality, choose **skip** with reason.
+- If `correcting_after_hub_failure` is true: the agent cited Hub experience but the run failed — prefer **update** on similar_own_top1 to merge the fix; only **skip** when the correction adds nothing new; use **create** only when no own card matches.
 
 Examples:
 {"action":"skip","update_memory_id":null,"reason":"Same Flask Blueprint fix already in similar_others_top3"}
@@ -182,6 +183,8 @@ def _call_curator_llm(draft: dict[str, Any], similar_ctx: dict[str, Any]) -> dic
         "draft_extraction": draft,
         "similar_own_top1": similar_ctx.get("similar_own_top1"),
         "similar_others_top3": similar_ctx.get("similar_others_top3"),
+        "hub_references": draft.get("_hub_references") or [],
+        "correcting_after_hub_failure": bool(draft.get("_correcting_after_hub_failure")),
     }
     # Re-use extractor's HTTP client by temporarily swapping prompt through monkeypatch pattern:
     # duplicate minimal call here importing from extractor internals.

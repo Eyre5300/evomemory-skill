@@ -199,20 +199,35 @@ def _build_context(state: AgentState) -> dict[str, Any]:
     return sanitize_context(raw)
 
 
-def _should_verify_instead_of_upload(ctx: dict[str, Any]) -> tuple[bool, list[str]]:
-    """Determine whether to verify existing Hub experience instead of uploading a new one.
+def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Decide record-download, verify, and upload after an agent run.
 
-    Returns (should_verify, hub_reference_ids).
-    Logic:
-    - Hub refs present + no errors → verify (agent used Hub experience successfully)
-    - Hub refs present + errors → upload corrected experience (will link to parents)
-    - No hub refs → upload new experience
+    Policy:
+    - Cited Hub experience → always record-download (success or failure).
+    - Cited + success → verify only, no upload.
+    - Cited + failure → record-download, no verify, upload correction (curator may update own card).
+    - No citation + success → upload (must pass duplicate check upstream).
+    - No citation + failure → no upload.
     """
-    hub_refs = ctx.get("_hub_references") or []
-    has_err = ctx.get("has_tool_error_flag", False)
-    if hub_refs and not has_err:
-        return True, hub_refs
-    return False, hub_refs
+    hub_refs = [str(x).strip() for x in (ctx.get("_hub_references") or []) if str(x).strip()]
+    has_err = bool(ctx.get("has_tool_error_flag", False))
+
+    record_download_ids = list(hub_refs)
+    verify_ids = list(hub_refs) if hub_refs and not has_err else []
+
+    should_upload = False
+    if hub_refs and has_err:
+        should_upload = True
+        ctx["_correcting_after_hub_failure"] = True
+    elif not hub_refs and not has_err:
+        should_upload = True
+
+    return {
+        "hub_refs": hub_refs,
+        "record_download_ids": record_download_ids,
+        "verify_ids": verify_ids,
+        "should_upload": should_upload,
+    }
 
 
 class EvoMemorySyncMiddleware(AgentMiddleware):
@@ -229,22 +244,23 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
             return False
         return _sync_enabled()
 
-    def _send_verifications(self, hub_ref_ids: list[str]) -> None:
-        """POST verification for each referenced Hub experience ID."""
-        import requests
-        from .hub_url import get_base_url
-        from .hub_usage import record_download_by_id
-        from .uploader import hub_headers, tls_verify
+    def _hub_headers_or_none(self) -> dict[str, str] | None:
+        from .uploader import hub_headers
 
-        base = get_base_url()
         try:
-            headers = hub_headers()
+            return hub_headers()
         except RuntimeError:
-            logger.debug("evomemory_sync: no token, skip verification")
+            logger.debug("evomemory_sync: no token, skip hub post-run actions")
+            return None
+
+    def _record_hub_ref_downloads(self, hub_ref_ids: list[str]) -> None:
+        """Count Hub experience use whenever the agent cited it (success or failure)."""
+        from .hub_usage import record_download_by_id
+
+        headers = self._hub_headers_or_none()
+        if not headers:
             return
-        timeout = float(os.getenv("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
         for ref_id in hub_ref_ids:
-            # Validate ref_id is a UUID to prevent path injection
             if not re.match(r"^[0-9a-f\-]{36}$", ref_id, re.IGNORECASE):
                 logger.warning("skipping invalid hub ref_id: %s", ref_id)
                 continue
@@ -252,6 +268,22 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
                 record_download_by_id(ref_id, headers=headers)
             except Exception as e:
                 logger.debug("evomemory_sync: record-download %s failed: %s", ref_id, e)
+
+    def _send_verify(self, hub_ref_ids: list[str]) -> None:
+        """POST verification after a successful run that used cited Hub experience."""
+        import requests
+        from .hub_url import get_base_url
+        from .uploader import tls_verify
+
+        headers = self._hub_headers_or_none()
+        if not headers:
+            return
+        base = get_base_url()
+        timeout = float(os.getenv("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
+        for ref_id in hub_ref_ids:
+            if not re.match(r"^[0-9a-f\-]{36}$", ref_id, re.IGNORECASE):
+                logger.warning("skipping invalid hub ref_id: %s", ref_id)
+                continue
             try:
                 r = requests.post(
                     f"{base}/memory/{ref_id}/verify",
@@ -278,27 +310,38 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
         if not ctx.get("task_description"):
             return
 
-        # ── Conditional routing: verify vs upload ──
-        should_verify, hub_refs = _should_verify_instead_of_upload(ctx)
-        if should_verify and hub_refs:
-            # Agent successfully used a Hub experience → send verification, skip upload
+        actions = _resolve_post_run_actions(ctx)
+        hub_refs = actions["hub_refs"]
+
+        if actions["record_download_ids"]:
+            try:
+                self._record_hub_ref_downloads(actions["record_download_ids"])
+            except Exception:
+                logger.warning("evomemory_sync: record-download failed", exc_info=True)
+
+        if actions["verify_ids"]:
             logger.info(
-                "evomemory_sync: task succeeded using Hub refs %s → verifying instead of uploading",
-                hub_refs,
+                "evomemory_sync: task succeeded using Hub refs %s → verify (no upload)",
+                actions["verify_ids"],
             )
             try:
-                self._send_verifications(hub_refs)
+                self._send_verify(actions["verify_ids"])
             except Exception:
-                logger.warning("evomemory_sync: verification request failed", exc_info=True)
+                logger.warning("evomemory_sync: verify request failed", exc_info=True)
+
+        if not actions["should_upload"]:
+            if not hub_refs and ctx.get("has_tool_error_flag"):
+                logger.info("evomemory_sync: run failed without Hub refs → skip upload")
             return
 
-        # Pass hub_refs as parent references for corrected experiences
         if hub_refs:
             ctx.setdefault("_hub_references", hub_refs)
             logger.info(
-                "evomemory_sync: task failed despite Hub refs %s → uploading corrected experience",
+                "evomemory_sync: task failed despite Hub refs %s → upload correction (duplicate check)",
                 hub_refs,
             )
+        else:
+            logger.info("evomemory_sync: run succeeded without Hub refs → upload (duplicate check)")
 
         tmp_path: str | None = None
         try:

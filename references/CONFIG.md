@@ -84,7 +84,9 @@ This will ask:
 
 ## Auto-upload middleware (`evomemory_sync`)
 
-When `EvoMemorySyncMiddleware` is registered on the agent and `EVOMEMORY_API_TOKEN` is set, each completed run spawns an offline worker that calls an LLM to produce Hub-shaped JSON, then uploads via **`upload_memory_record`**. Upload path: **agent curator** (default) searches Hub for similar cards, an LLM chooses **create / update / skip** and rewrites the draft; if curator is off or fails, **rule-based semantic dedup** applies (`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`). The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
+When `EvoMemorySyncMiddleware` is registered on the agent and `EVOMEMORY_API_TOKEN` is set, each completed run spawns an offline worker that calls an LLM to produce Hub-shaped JSON, then uploads via **`upload_memory_record`**. Upload path: **agent curator** (default) searches Hub for similar cards, an LLM chooses **create / update / skip** and rewrites the draft; if curator is off or fails, **rule-based semantic dedup** applies (`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`).
+
+**Post-run routing:** cited Hub experience (`[HUB_REF:uuid]` in the trace) always triggers **`record-download`** (success or failure). **Verify** only when cited and the run succeeded (no upload). Upload only when: cited + failed (correction, curator prefers update), or not cited + succeeded. Not cited + failed → no upload. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
 
 When an agent **uses** Hub memories via `search_evomemory`, the skill calls **`POST /memory/{kind}/{id}/record-download`** for each returned row so the website **download_count** stays in sync (web “下载” button uses the full `GET .../download` endpoint).
 

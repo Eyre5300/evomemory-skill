@@ -71,6 +71,12 @@ def main() -> int:
             logger.info("offline worker skip ctx_hash=%s", ctx_hash)
             return 0
 
+        hub_refs = ctx.get("_hub_references")
+        if hub_refs:
+            record["_hub_references"] = hub_refs
+        if ctx.get("_correcting_after_hub_failure"):
+            record["_correcting_after_hub_failure"] = True
+
         mem_type = str(record.get("memory_type") or record.get("memory_kind") or record.get("type") or "")
         logger.info("offline worker upload ctx_hash=%s memory_type=%s", ctx_hash, mem_type)
         # Retry up to 3 times for transient failures

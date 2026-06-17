@@ -185,6 +185,17 @@ On `after_agent` / `aafter_agent` it builds a context object from `state["messag
 
 The LLM must output JSON only: either `memory_type: "ideation"` (failed or promising), `memory_type: "experiment"`, or `{ "skip": true }`. See `evomemory_sync/extraction_fields.py` (`EXTRACTOR_SYSTEM_PROMPT`) for the system prompt.
 
+### Post-run routing（引用经验 / 上传 / 去重）
+
+| 情况 | record-download | verify | 上传 |
+|------|-----------------|--------|------|
+| 引用了 Hub 经验 `[HUB_REF:…]`，任务**成功** | ✅ | ✅ | ❌ |
+| 引用了 Hub 经验，任务**失败** | ✅ | ❌ | ✅（修正，策展优先 **update** 自己的卡） |
+| **未**引用经验，任务**成功** | — | — | ✅（须经重复检验） |
+| **未**引用经验，任务**失败** | — | — | ❌ |
+
+凡进入上传路径的记录，一律经 **Agent Curator**（或回退语义去重）：重复过高 **skip**、与自己旧卡相似则 **update**、否则 **create**。
+
 ## Hub field reference
 
 See `references/CONFIG.md` for env vars and REST endpoints.
