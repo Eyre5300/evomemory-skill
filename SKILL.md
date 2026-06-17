@@ -57,6 +57,17 @@ python upgrade.py
 
 Runs **`git pull`** + **`pip install -e .`**; does **not** overwrite `.env`. Restart your agent after upgrading.
 
+### Upgrading from an older version
+
+- **Hub** (`https://evomem.club`) is updated server-side; **old skill still works**, but upgrade the local package for new client features.
+- **No re-registration** required — use **`python upgrade.py`**, not `install.py` (install re-prompts login).
+- **Git clone:** `cd <skill-repo>` → `python upgrade.py`.
+- **Very old clone (no `upgrade.py`):** `git pull` → `python scripts/manage.py upgrade`.
+- **Only `/install-skill` in Cursor:** clone `https://gitee.com/MagniDrive/evomemory-skill.git`, copy `.env` if you have one, then `python upgrade.py` or first-time `python install.py`.
+- **Restart the agent** after upgrading.
+
+Optional tuning: `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`, `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` in `.env` (`references/CONFIG.md`).
+
 ## Install the package (manual)
 
 If you already ran `install.py`, skip this. Otherwise from the skill root:

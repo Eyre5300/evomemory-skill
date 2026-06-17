@@ -32,7 +32,24 @@ From the **same skill repo root**, in the **same Python env as your agent**:
 python upgrade.py
 ```
 
-This runs **`git pull`** (if this folder is a git clone) and **`pip install -e .`**. Your **`.env` is not changed** — no need to log in again.
+This runs **`git pull`** (if this folder is a git clone) and **`pip install -e .`**. Your **`.env` is not changed** — no need to log in again. Restart your agent after upgrading.
+
+### Upgrading from an older version
+
+The **Hub** at `https://evomem.club` is updated on the server; **old skill clients still work** (upload/search), but you need a **local skill upgrade** to get newer client behavior (e.g. semantic dedup before upload, download counts when using `search_evomemory`). You do **not** need to register again or re-run `install.py` unless you want a new Hub account.
+
+| How you installed | What to do |
+|-------------------|------------|
+| **`git clone`** of this repo | `cd evomemory-skill` → `python upgrade.py` (or `git pull` then `pip install -e .`) |
+| **Clone without `upgrade.py` yet** (very old tree) | `git pull` → `python scripts/manage.py upgrade` or `pip install -e .` |
+| **Cursor `/install-skill` only** (no git folder) | `git clone https://gitee.com/MagniDrive/evomemory-skill.git` → copy your old `.env` into it if needed → `python upgrade.py` or `python install.py` if you never ran `pip` |
+| **Not sure where the skill lives** | `pip show evomemory_sync` in the **same venv as your agent**; clone repo above and run `python upgrade.py` there |
+
+**Do not** run `python install.py` just to update code — it re-prompts for login and refreshes `.env` tokens. Use **`python upgrade.py`** instead.
+
+**After upgrading:** restart EvoScientist / your agent so the new `evomemory_sync` package is loaded.
+
+Optional new env vars (defaults work without editing `.env`): see `references/CONFIG.md` — e.g. `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`, `EVOMEMORY_RECORD_DOWNLOAD_ON_USE`.
 
 ---
 
@@ -198,4 +215,5 @@ Apache 2.0
 
 - **本 skill 能做什么**：① 每次 Agent 跑完后**自动**把对话/trace 交给抽取模型，整理成 ideation/experiment JSON 并**上传到 Hub**（`EvoMemorySyncMiddleware` + `worker`）；② 给模型注入 **`search_evomemory` 工具**，执行中**主动语义检索**社区记忆；③ 提供 **`agent_tools`** 里的异步函数，供你在任务结束时**显式**归档失败构思或成功实验；④ 提供 **`scripts/search.py`** 命令行检索。
 - **如何配置**：在 skill 仓库根目录执行 `pip install -e .`，再用 `cd scripts && python setup.py wizard` 写入 **`EVOMEMORY_API_BASE_URL`** 与 **`EVOMEMORY_API_TOKEN`**；自动上传还需配置 **`EVOMEMORY_EXTRACTOR_*`**（或 `SILICONFLOW_API_KEY`）。环境变量详解见 **`references/CONFIG.md`**，接入示例见 **`SKILL.md`**。
-- **如何更新**：在 skill 根目录执行 **`python upgrade.py`**（`git pull` + 重装包；不修改 `.env`）。
+- **如何更新**：在 skill 根目录执行 **`python upgrade.py`**（`git pull` + 重装包；不修改 `.env`）。升级后重启 Agent。
+- **旧版用户**：Hub 服务端已更新，旧 skill 仍可用；要获得上传去重、检索计下载量等新能力，请按上表升级本地包。**不必**为升级而重跑 `install.py`（那会重新登录）。若只有 Cursor `/install-skill`、没有 git 目录，请先 `git clone https://gitee.com/MagniDrive/evomemory-skill.git`，复制原 `.env` 后执行 `python upgrade.py`。详见上文 **Upgrading from an older version**。
