@@ -1,0 +1,18 @@
+[
+  {
+    "id": "good_specific",
+    "text": "The failing test is a boundary-condition bug in the bulk-discount rule: an order whose quantity is exactly the bulk threshold is wrongly being given the bulk discount. The discount decision lives in store/pricing.py — cart.py only sums the line totals, discounts.py only defines the threshold/rate constants, and inventory.py is unrelated, so do not waste steps editing those. Read the failing test, then look at how the quantity is compared against the threshold inside pricing.py and make that comparison correct. Then run the tests."
+  },
+  {
+    "id": "good_abstract",
+    "text": "Debug this by first reading the failing test to learn the exact expected behavior at the boundary, then trace which function actually computes that value and fix the boundary condition there. Boundary/off-by-one bugs usually live in a comparison operator. Verify with the tests."
+  },
+  {
+    "id": "misleading",
+    "text": "The bug is in store/cart.py: the total() method rounds the sum incorrectly, which throws off the expected amount. Fix the rounding logic in cart.py and the tests will pass."
+  },
+  {
+    "id": "vague",
+    "text": "Read the code carefully, find the bug, and fix it so that all the tests pass."
+  }
+]

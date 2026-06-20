@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 
 
 def log2_bits(n: float) -> float:
@@ -114,9 +114,15 @@ _NEGATIVE_RE = re.compile(
     r"[`'\"]?([A-Za-z_][\w./-]{1,40})[`'\"]?",
     re.IGNORECASE,
 )
-_SYMBOL_RE = re.compile(r"`([A-Za-z_]\w+)`|(?:\b)([A-Z][A-Z0-9_]{2,})\b")
+_SYMBOL_RE = re.compile(
+    r"`([A-Za-z_]\w+)`"                       # backticked identifier
+    r"|\b([A-Z][A-Z0-9_]{2,})\b"             # ALL_CAPS constant
+    r"|\b([a-z][a-z0-9]*_[a-z0-9_]+)\b"      # snake_case identifier (e.g. auth_token, batch_size)
+)
+# Literal assignments: English ``= value`` and Chinese ``设为/改为 value`` forms.
 _LITERAL_RE = re.compile(
-    r"(?:=\s*)([`'\"][^`'\"]+[`'\"]|right\b|\b1\b|[-+]?\d+(?:\.\d+)?|True|False|None)"
+    r"(?:=|设为|设置为|设成|改为|改成|置为)\s*"
+    r"([`'\"][^`'\"]+[`'\"]|right\b|[-+]?\d+(?:\.\d+)?|True|False|None)"
 )
 
 
@@ -161,8 +167,9 @@ def extract_experience_constraints(
     symbols: list[str] = []
     sseen: set[str] = set()
     for m in _SYMBOL_RE.finditer(text):
-        sym = m.group(1) or m.group(2)
-        if sym and sym not in sseen:
+        sym = m.group(1) or m.group(2) or m.group(3)
+        # Skip tokens already counted as a function so they are not double-weighted.
+        if sym and sym not in sseen and sym not in fseen:
             sseen.add(sym)
             symbols.append(sym)
 
@@ -373,6 +380,87 @@ def build_swebench_trajectory(
             "Run FAIL_TO_PASS tests",
         ),
     ]
+
+
+def build_gaia_dimensions(
+    *,
+    available_tools: int,
+    candidate_sources: int,
+    operations_per_source: int,
+    answer_formats: int,
+    constraints: ExperienceConstraints,
+) -> list[DecisionDimension]:
+    """GAIA multi-tool research decision model (computable from task + toolset stats).
+
+    The GAIA analog of :func:`build_swebench_dimensions`. A successful run must
+    decide, at minimum: which tool/approach, which source to trust, which
+    operation to run on it, and how to format the answer. Experience constraints
+    (pinned tool/source names, literal values) prune those branches. Inputs are
+    measurable from the task harness (toolset size, retrieved-source count, …);
+    the exact branch factors are an initial model to be refined against real GAIA
+    run statistics in the experiment harness.
+    """
+    c = constraints
+    hard_pins = len(c.pinned_files) + len(c.pinned_symbols) + len(c.pinned_functions)
+
+    # D1: which tool / approach to take this step
+    tool_before = max(2, available_tools)
+    tool_after = apply_constraints_to_branches(
+        tool_before,
+        pinned_count=1 if hard_pins else 0,
+        negative_elimination_ratio=0.5 * len(c.negative_hypotheses),
+    )
+
+    # D2: which source / document / search result to use
+    src_before = max(1, candidate_sources)
+    src_after = apply_constraints_to_branches(
+        src_before,
+        pinned_count=len(c.pinned_files) + len(c.pinned_symbols),
+    )
+
+    # D3: which operation to run on the chosen source
+    op_before = max(1, operations_per_source)
+    op_after = apply_constraints_to_branches(
+        op_before,
+        pinned_count=len(c.pinned_functions),
+        literal_pin_count=len(c.literal_parameters),
+        literal_space_before=4,
+    )
+
+    # D4: answer shape / unit / format
+    fmt_before = max(1, answer_formats)
+    fmt_after = apply_constraints_to_branches(
+        fmt_before,
+        pinned_count=len(c.literal_parameters),
+    )
+
+    return [
+        DecisionDimension("tool_choice", tool_before, tool_after, f"tools={available_tools}, hard_pins={hard_pins}"),
+        DecisionDimension("source_select", src_before, src_after, f"candidate_sources={candidate_sources}"),
+        DecisionDimension("operation", op_before, op_after, f"ops_per_source={operations_per_source}"),
+        DecisionDimension("answer_format", fmt_before, fmt_after, f"formats={answer_formats}"),
+    ]
+
+
+def build_gaia_trajectory(
+    *,
+    available_tools: int,
+    candidate_sources: int,
+    operations_per_source: int,
+    reasoning_steps: int = 3,
+) -> list[TrajectoryStep]:
+    """Typical successful GAIA path with measurable branch factors per step."""
+    steps = [
+        TrajectoryStep(1, "plan_tool", max(2, available_tools), "Which tool/approach for this sub-goal?"),
+        TrajectoryStep(2, "select_source", max(1, candidate_sources), "Pick a document / page / result"),
+        TrajectoryStep(3, "operate", max(1, operations_per_source), "Extract / compute on the source"),
+    ]
+    for i in range(max(0, reasoning_steps - 1)):
+        steps.append(
+            TrajectoryStep(4 + i, "chain_step", max(2, available_tools), "Next dependent reasoning/tool step")
+        )
+    steps.append(TrajectoryStep(4 + max(0, reasoning_steps - 1), "finalize_answer", 2, "Format and verify the answer"))
+    return steps
 
 
 def summarize_result(result: ContextDensityResult) -> dict[str, Any]:

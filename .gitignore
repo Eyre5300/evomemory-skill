@@ -8,3 +8,8 @@ build/
 scripts/.env
 .venv/
 .pytest_cache/
+
+# experiment artifacts / data (not code)
+experiments/results/
+*.db
+*.log
