@@ -78,7 +78,11 @@ class StructuralWeights:
     pinned_functions: float = 1.0
     literal_parameters: float = 1.0
     pinned_symbols: float = 0.5
-    negative_hypotheses: float = 0.5
+    # Negative hypotheses ("check X, not Y") are transferable advice, not a concrete
+    # constraint (model/file/parameter name), so they do NOT count toward textual
+    # specificity. They still feed ContextDensity's search pruning. (M6 finding:
+    # counting them made abstract principles look specific, e.g. "rather than …".)
+    negative_hypotheses: float = 0.0
 
 
 def weighted_constraint_count(
