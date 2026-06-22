@@ -61,8 +61,8 @@ def main(argv):
 
     records = []  # {task, arm, label, seed, passed, steps, chosen}
 
-    # --- Phase 1: baseline failure-set ---
-    failure = []
+    # --- Phase 1: baseline on every task (record rate; do NOT skip) ---
+    base_rate = {}
     for task in FLASK_TASKS:
         bp = 0
         for s in seeds:
@@ -70,13 +70,12 @@ def main(argv):
             records.append({"task": task.id, "arm": "A0", "label": "none", "seed": s,
                             "passed": passed, "steps": steps})
             bp += int(passed)
-        verdict = "failure-set" if bp == 0 else "solvable(SKIP)"
-        if bp == 0:
-            failure.append(task)
-        print(f"[phase1] {task.id:26s} baseline {bp}/{n} -> {verdict}", flush=True)
+        base_rate[task.id] = bp / n
+        tag = "failure-set" if bp == 0 else ("hard" if bp < n else "solvable")
+        print(f"[phase1] {task.id:26s} baseline {bp}/{n} ({tag})", flush=True)
 
-    # --- Phase 2: arms on the failure-set ---
-    for task in failure:
+    # --- Phase 2: arms on ALL tasks (lift over baseline; suite is borderline-easy) ---
+    for task in FLASK_TASKS:
         for arm in arms:
             if arm == "A0":
                 continue
@@ -89,28 +88,28 @@ def main(argv):
                 print(f"[phase2] {task.id:26s} {arm} {ARM_LABEL.get(arm, arm):16s} seed={s} "
                       f"-> {'PASS' if passed else 'FAIL'}  {steps}st", flush=True)
 
-    # --- aggregate per-arm over the failure-set ---
-    fids = {t.id for t in failure}
+    # --- aggregate per-arm over ALL task x seed, with lift over A0 baseline ---
     agg = {}
     for r in records:
-        if r["task"] not in fids:
-            continue
         a = agg.setdefault(r["arm"], {"label": r["label"], "pass": 0, "n": 0, "steps": []})
         a["pass"] += int(r["passed"]); a["n"] += 1; a["steps"].append(r["steps"])
+    base = agg.get("A0", {"pass": 0, "n": 1})
+    base_pr = base["pass"] / base["n"]
     summary = {a: {"label": v["label"], "pass_rate": round(v["pass"] / v["n"], 3),
                    "passes": v["pass"], "n": v["n"],
-                   "avg_steps": round(sum(v["steps"]) / len(v["steps"]), 1)}
+                   "avg_steps": round(sum(v["steps"]) / len(v["steps"]), 1),
+                   "lift_vs_baseline": round(v["pass"] / v["n"] - base_pr, 3)}
                for a, v in sorted(agg.items())}
 
-    print("\n==== value spectrum (failure-set) ====", flush=True)
+    print("\n==== value spectrum (all tasks; lift vs A0 baseline) ====", flush=True)
     for a, v in summary.items():
         print(f"  {a} {v['label']:16s} pass {v['passes']}/{v['n']} = {v['pass_rate']:.0%}  "
-              f"avg_steps={v['avg_steps']}", flush=True)
+              f"lift={v['lift_vs_baseline']:+.0%}  avg_steps={v['avg_steps']}", flush=True)
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out = RESULTS_DIR / f"exp1_flask_{int(time.time())}.json"
     out.write_text(json.dumps({"consumer": consumer.name, "seeds": seeds, "arms": arms,
-                               "failure_set": sorted(fids), "summary": summary, "records": records,
+                               "baseline_rate_per_task": base_rate, "summary": summary, "records": records,
                                "minutes": round((time.time() - t_start) / 60, 1)},
                               ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\nsaved: {out}  ({round((time.time() - t_start) / 60, 1)} min)", flush=True)
