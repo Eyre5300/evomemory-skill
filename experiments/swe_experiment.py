@@ -78,51 +78,75 @@ def run_arm(consumer, task, exp_text, seed):
         env.cleanup()
 
 
-def main(argv):
-    n_tasks = int(argv[0]) if argv else 5
-    arms = argv[1].split(",") if len(argv) > 1 else ["A0", "A2", "A3"]
-    n_seeds = int(argv[2]) if len(argv) > 2 else 1
-    seeds = list(range(1, n_seeds + 1))
-    repo_key = "sympy_sympy"
-
-    valid = set(json.loads((SWEBENCH_DIR / f"valid_{repo_key}.json").read_text()))
-    tasks = [t for t in load_tasks() if t.id in valid][:n_tasks]
-    consumer = get_consumer("qwen3-8b")
-    print(f"SWE-exp consumer={consumer.name} repo=sympy tasks={len(tasks)} seeds={seeds} arms={arms}", flush=True)
-
-    records = []
-    t0 = time.time()
-    for task in tasks:
-        for arm in arms:
-            for s in seeds:
-                txt = select(task, arm)
-                passed, steps = run_arm(consumer, task, txt, s)
-                records.append({"task": task.id, "arm": arm, "seed": s, "passed": passed, "steps": steps})
-                print(f"  {task.id:28s} {arm} {ARM_LABEL.get(arm, arm):11s} seed={s} "
-                      f"-> {'PASS' if passed else 'FAIL'}  {steps}st", flush=True)
-
+def _aggregate(records):
     agg = {}
     for r in records:
         a = agg.setdefault(r["arm"], {"pass": 0, "n": 0})
         a["pass"] += int(r["passed"]); a["n"] += 1
     base = agg.get("A0", {"pass": 0, "n": 1})
     base_pr = base["pass"] / max(1, base["n"])
-    summary = {a: {"label": ARM_LABEL.get(a, a), "pass_rate": round(v["pass"] / v["n"], 3),
-                   "passes": v["pass"], "n": v["n"],
-                   "lift_vs_baseline": round(v["pass"] / v["n"] - base_pr, 3)}
-               for a, v in sorted(agg.items())}
-    print("\n==== SWE-bench value spectrum (sympy) ====", flush=True)
+    return {a: {"label": ARM_LABEL.get(a, a), "pass_rate": round(v["pass"] / v["n"], 3),
+                "passes": v["pass"], "n": v["n"],
+                "lift_vs_baseline": round(v["pass"] / v["n"] - base_pr, 3)}
+            for a, v in sorted(agg.items())}
+
+
+def main(argv):
+    # args: [arms] [n_seeds] [n_tasks|all] [task_offset]
+    arms = argv[0].split(",") if argv else ["A0", "A2", "A3"]
+    n_seeds = int(argv[1]) if len(argv) > 1 else 1
+    n_tasks = (None if (len(argv) > 2 and argv[2] == "all") else int(argv[2])) if len(argv) > 2 else 5
+    offset = int(argv[3]) if len(argv) > 3 else 0
+    seeds = list(range(1, n_seeds + 1))
+    repo_key = "sympy_sympy"
+
+    valid = set(json.loads((SWEBENCH_DIR / f"valid_{repo_key}.json").read_text()))
+    tasks = [t for t in load_tasks() if t.id in valid]
+    tasks = tasks[offset: (offset + n_tasks) if n_tasks else None]
+    consumer = get_consumer("qwen3-8b")
+
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    jsonl = RESULTS_DIR / "swe_sympy_runs.jsonl"   # one shared, resumable result log
+    done = {}
+    if jsonl.exists():
+        for line in jsonl.read_text(encoding="utf-8").splitlines():
+            try:
+                r = json.loads(line); done[(r["task"], r["arm"], r["seed"])] = r
+            except Exception:
+                pass
+    print(f"SWE-exp consumer={consumer.name} tasks={len(tasks)} seeds={seeds} arms={arms} "
+          f"(resume: {len(done)} runs already logged)", flush=True)
+
+    t0 = time.time()
+    with jsonl.open("a", encoding="utf-8") as f:
+        for task in tasks:
+            for arm in arms:
+                for s in seeds:
+                    if (task.id, arm, s) in done:
+                        continue
+                    txt = select(task, arm)
+                    try:
+                        passed, steps = run_arm(consumer, task, txt, s)
+                    except Exception as e:                     # never let one task kill the run
+                        passed, steps = False, -1
+                        print(f"  {task.id:28s} {arm} seed={s} ERROR {type(e).__name__}: {e}", flush=True)
+                    rec = {"task": task.id, "arm": arm, "seed": s, "passed": bool(passed), "steps": steps}
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n"); f.flush()
+                    print(f"  {task.id:28s} {arm} {ARM_LABEL.get(arm, arm):11s} seed={s} "
+                          f"-> {'PASS' if passed else 'FAIL'}  {steps}st", flush=True)
+
+    # aggregate over the full log
+    allrecs = [json.loads(l) for l in jsonl.read_text(encoding="utf-8").splitlines() if l.strip()]
+    summary = _aggregate(allrecs)
+    print("\n==== SWE-bench value spectrum (sympy, all logged runs) ====", flush=True)
     for a, v in summary.items():
         print(f"  {a} {v['label']:11s} pass {v['passes']}/{v['n']} = {v['pass_rate']:.0%}  "
               f"lift={v['lift_vs_baseline']:+.0%}", flush=True)
-
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out = RESULTS_DIR / f"swe_sympy_{int(time.time())}.json"
-    out.write_text(json.dumps({"consumer": consumer.name, "tasks": [t.id for t in tasks],
-                               "seeds": seeds, "arms": arms, "summary": summary, "records": records,
-                               "minutes": round((time.time() - t0) / 60, 1)}, ensure_ascii=False, indent=2),
-                   encoding="utf-8")
-    print(f"\nsaved: {out}  ({round((time.time() - t0) / 60, 1)} min)", flush=True)
+    out = RESULTS_DIR / f"swe_sympy_summary_{int(time.time())}.json"
+    out.write_text(json.dumps({"consumer": consumer.name, "summary": summary,
+                               "n_records": len(allrecs), "minutes": round((time.time() - t0) / 60, 1)},
+                              ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\nsaved summary: {out}  (+{round((time.time() - t0) / 60, 1)} min this session)", flush=True)
     return 0
 
 
