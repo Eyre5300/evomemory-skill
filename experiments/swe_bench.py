@@ -27,6 +27,9 @@ from typing import Any, Callable
 SWEBENCH_DIR = Path(os.environ.get("EVOMEMORY_SWEBENCH_DIR", os.path.expanduser("~/bty/swebench")))
 REPOS_DIR = SWEBENCH_DIR / "repos"
 VENVS_DIR = SWEBENCH_DIR / "venvs"
+# Optional shared interpreter (a conda env with pytest + deps) used for all repos;
+# overrides the per-repo venv. Set EVOMEMORY_SWE_PYTHON=/path/to/python.
+_SHARED_PY = os.environ.get("EVOMEMORY_SWE_PYTHON", "")
 
 CODE_SYSTEM = (
     "You are a software engineer fixing a bug in a large real Python repository. "
@@ -87,7 +90,7 @@ class SweEnv:
 
     def __init__(self, task: SweTask):
         self.task = task
-        self.venv_py = VENVS_DIR / task.reponame / "bin" / "python"
+        self.venv_py = Path(_SHARED_PY) if _SHARED_PY else (VENVS_DIR / task.reponame / "bin" / "python")
         self.root = self._make_workdir()
 
     def _make_workdir(self) -> Path:
@@ -161,20 +164,46 @@ class SweEnv:
         f.write_text(text.replace(old, new), encoding="utf-8")
         return "OK: edit applied"
 
+    def _test_files(self) -> list[str]:
+        """Test files touched by the task's test_patch (where FAIL_TO_PASS live)."""
+        files = []
+        for line in self.task.test_patch.splitlines():
+            m = re.match(r"^\+\+\+ b/(.+)$", line.rstrip())
+            if m and m.group(1) != "/dev/null":
+                files.append(m.group(1))
+        return files
+
     def _pytest(self, tests: tuple[str, ...]) -> subprocess.CompletedProcess:
+        # SWE-bench FAIL_TO_PASS are often bare function names; select them with -k
+        # over the test files the test_patch modifies (so pytest can collect them).
+        targets, k_names = [], []
+        for t in tests:
+            if "::" in t or t.endswith(".py"):
+                targets.append(t)
+            else:
+                k_names.append(t.split("::")[-1])
+        if k_names and not targets:
+            targets = self._test_files()
+        args = [str(self.venv_py), "-m", "pytest", "-q", "-p", "no:cacheprovider", *targets]
+        if k_names:
+            args += ["-k", " or ".join(k_names)]
         return subprocess.run(
-            [str(self.venv_py), "-m", "pytest", "-q", "-p", "no:cacheprovider", *tests],
-            cwd=str(self.root), capture_output=True, text=True, timeout=600,
+            args, cwd=str(self.root), capture_output=True, text=True, timeout=600,
             env=dict(os.environ, PYTHONPATH=str(self.root)),
         )
 
     def run_tests(self) -> str:
         r = self._pytest(self.task.fail_to_pass)
         tail = (r.stdout or r.stderr).strip().splitlines()[-12:]
-        return ("ALL TESTS PASSED\n" if r.returncode == 0 else "TESTS FAILED\n") + "\n".join(tail)
+        return ("ALL TESTS PASSED\n" if self._passed(r) else "TESTS FAILED\n") + "\n".join(tail)
+
+    @staticmethod
+    def _passed(r: subprocess.CompletedProcess) -> bool:
+        # returncode 0 AND at least one test actually ran (guard against "no tests ran")
+        return r.returncode == 0 and "no tests ran" not in (r.stdout or "")
 
     def tests_pass(self) -> bool:
-        return self._pytest(self.task.fail_to_pass).returncode == 0
+        return self._passed(self._pytest(self.task.fail_to_pass))
 
 
 def swe_tools_openai() -> list[dict[str, Any]]:
