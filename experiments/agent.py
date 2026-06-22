@@ -55,39 +55,43 @@ def _final_answer(text: str) -> str:
 
 def run_consumer(task: str, *, system: str = DEFAULT_SYSTEM, extra_context: str = "",
                  seed: int | None = None, tools_openai: list[dict[str, Any]] | None = None,
-                 execute_fn=None, max_steps: int | None = None, done_check=None) -> AgentResult:
+                 execute_fn=None, max_steps: int | None = None, done_check=None,
+                 consumer=None) -> AgentResult:
     """Run the weak model via the OpenAI-compatible chat endpoint with tool calls.
 
     Pass a fixed `seed` for reproducibility (Ollama is non-deterministic by default,
     even at temperature 0). Vary the seed to measure success-rate variance.
     Pass `tools_openai` + `execute_fn` to swap the tool surface (e.g. code-repair
     tools); defaults to the calculator toolkit.
+    Pass `consumer` (a ConsumerSpec/ConsumerConfig with base_url/model/api_key/…)
+    to select which weak model runs; defaults to the .env CONSUMER (B1 registry).
     """
+    cons = consumer if consumer is not None else CONSUMER
     tools_spec = tools_openai if tools_openai is not None else toolkit.openai_tools()
     execfn = execute_fn if execute_fn is not None else toolkit.execute
-    steps_budget = max_steps if max_steps is not None else CONSUMER.max_steps
+    steps_budget = max_steps if max_steps is not None else cons.max_steps
 
     sys_text = system + (f"\n\n{extra_context}" if extra_context else "")
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": sys_text},
         {"role": "user", "content": task},
     ]
-    url = CONSUMER.base_url.rstrip("/") + "/chat/completions"
-    headers = {"Authorization": f"Bearer {CONSUMER.api_key}", "Content-Type": "application/json"}
+    url = cons.base_url.rstrip("/") + "/chat/completions"
+    headers = {"Authorization": f"Bearer {cons.api_key}", "Content-Type": "application/json"}
     tool_calls_log: list[dict[str, Any]] = []
     read_only_streak = 0
 
     for step in range(steps_budget):
         payload = {
-            "model": CONSUMER.model,
+            "model": cons.model,
             "messages": messages,
             "tools": tools_spec,
-            "temperature": CONSUMER.temperature,
+            "temperature": cons.temperature,
         }
         if seed is not None:
             payload["seed"] = seed
         try:
-            r = requests.post(url, json=payload, headers=headers, timeout=CONSUMER.timeout)
+            r = requests.post(url, json=payload, headers=headers, timeout=cons.timeout)
             r.raise_for_status()
             msg = r.json()["choices"][0]["message"]
         except Exception as e:

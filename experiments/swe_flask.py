@@ -18,8 +18,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-_SRC = Path(os.path.expanduser("~/skill经验/swebench_eval/flask_src"))
-_VENV_PY = Path(os.path.expanduser("~/skill经验/flask_venv/Scripts/python.exe"))
+# Paths are env-configurable so the same harness runs on the Windows dev box and the
+# Linux GPU cluster (tate). Defaults are the local Windows dev paths.
+_SRC = Path(os.environ.get(
+    "EVOMEMORY_FLASK_SRC", os.path.expanduser("~/skill经验/swebench_eval/flask_src")))
+_VENV_PY = Path(os.environ.get(
+    "EVOMEMORY_FLASK_VENV_PY", os.path.expanduser("~/skill经验/flask_venv/Scripts/python.exe")))
 
 CODE_SYSTEM = (
     "You are a software engineer fixing a bug in a large real Python repository (Flask). "
