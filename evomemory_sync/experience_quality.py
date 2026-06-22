@@ -274,7 +274,15 @@ def p_weighted(
     prior_alpha: float = 0.5,
     prior_beta: float = 0.5,
 ) -> dict[str, float]:
-    """Similarity-weighted Beta posterior mean of success (paper P(e)).
+    """Reliability of an experience as a *prior predictor* for a new task (paper P(e)).
+
+    A similarity-weighted Beta estimate over the experience's *existing, free*
+    verification evidence — the producer's own solve plus accumulated deployment
+    feedback — NOT extra probing runs. Relative to a new task it is a prior
+    (available before you run there, used to predict/select); relative to the
+    experience's own history it is a Beta estimate. This free evidence is what lets
+    P separate a useful experience from a merely-relevant (misleading) one — pure
+    content cannot. (G, by contrast, is a pure content prior: see ``generalization_mdl``.)
 
     Each verification ``i`` contributes weight ``s_i`` (its similarity to the
     experience's context) rather than a full count::
@@ -283,8 +291,8 @@ def p_weighted(
         P   = a_P / (a_P + b_P)
 
     ``y_i`` is the objective pass/fail of a test (0/1), never an LLM score. With
-    all ``s_i = 1`` this reduces exactly to :func:`p_empirical`. Returns the
-    posterior parameters and the mean (the Beta(a_P, b_P) also yields a CI).
+    all ``s_i = 1`` this reduces exactly to :func:`p_empirical`. Returns the Beta
+    parameters and the mean (Beta(a_P, b_P) also yields a credible interval).
     """
     if len(sims) != len(outcomes):
         raise ValueError("sims and outcomes must have equal length")
