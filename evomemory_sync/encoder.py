@@ -29,13 +29,17 @@ import numpy as np
 _MODEL_NAME = os.environ.get("EXP_ENCODER", "BAAI/bge-small-zh-v1.5")
 _OLLAMA_EMBED = os.environ.get("EXP_OLLAMA_EMBED", "bge-m3")
 _OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+# The encoder is tiny; run it on CPU by default. This avoids the GPU torch-arch
+# issue on V100/sm_70 (cudaErrorNoKernelImageForDevice from PyPI torch wheels) and
+# leaves the GPU free for the LLM server. Override with EXP_ENCODER_DEVICE=cuda.
+_DEVICE = os.environ.get("EXP_ENCODER_DEVICE", "cpu")
 
 
 @functools.lru_cache(maxsize=1)
 def _st_model():
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(_MODEL_NAME)
+    return SentenceTransformer(_MODEL_NAME, device=_DEVICE)
 
 
 def _embed_st(texts: Sequence[str]) -> np.ndarray:
