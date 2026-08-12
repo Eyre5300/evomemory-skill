@@ -8,6 +8,9 @@ from typing import Any
 
 def sanitize_text(text: str) -> str:
     s = text
+    # Retrieval capabilities prove local search provenance. They are not needed
+    # by the extractor, worker, or Hub and must not persist in redacted traces.
+    s = re.sub(r"\[HUB_APPLY_PROOF:[a-f0-9]{64}\]", "[HUB_APPLY_PROOF:REDACTED]", s, flags=re.I)
     # (?<!\w) avoids matching `api` inside `myapi_key` while still matching `api_key=` at line start or after space.
     _kw = r"(sk|api[_-]?key|access[_-]?token|secret|password|passwd)"
     s = re.sub(

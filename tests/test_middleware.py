@@ -7,27 +7,33 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from evomemory_sync.middleware import _adaptation_payload, _resolve_post_run_actions
+from evomemory_sync.middleware import (
+    _adaptation_payload,
+    _build_context,
+    _resolve_post_run_actions,
+)
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from evomemory_sync.application_proof import issue_application_proof
 
 
 class TestResolvePostRunActions:
-    def test_hub_refs_success_records_adaptation_no_upload(self):
+    def test_applied_hub_refs_success_records_adaptation_no_upload(self):
         ctx = {
             "_hub_references": ["abc-123", "def-456"],
             "run_success_flag": True,
         }
         actions = _resolve_post_run_actions(ctx)
-        assert actions["record_download_ids"] == ["abc-123", "def-456"]
+        assert actions["record_download_ids"] == []
         assert actions["adaptation_ids"] == ["abc-123", "def-456"]
         assert actions["should_upload"] is False
 
-    def test_hub_refs_failure_record_download_upload_no_verify(self):
+    def test_applied_hub_refs_failure_uploads_correction(self):
         ctx = {
             "_hub_references": ["abc-123"],
             "run_success_flag": False,
         }
         actions = _resolve_post_run_actions(ctx)
-        assert actions["record_download_ids"] == ["abc-123"]
+        assert actions["record_download_ids"] == []
         assert actions["adaptation_ids"] == ["abc-123"]
         assert actions["should_upload"] is True
         assert ctx["_correcting_after_hub_failure"] is True
@@ -50,6 +56,70 @@ class TestResolvePostRunActions:
         assert actions["should_upload"] is True
 
 
+def test_context_treats_retrieval_as_non_application():
+    memory_id = "12345678-1234-1234-1234-123456789abc"
+    ctx = _build_context(
+        {
+            "messages": [
+                HumanMessage(content="fix the test"),
+                AIMessage(content=f"result [HUB_REF:{memory_id}]"),
+            ]
+        }
+    )
+    assert ctx["_retrieved_hub_references"] == [memory_id]
+    assert ctx["_hub_references"] == []
+
+
+def test_context_accepts_only_valid_explicit_application():
+    memory_id = "12345678-1234-1234-1234-123456789abc"
+    proof = issue_application_proof(memory_id)
+    from evomemory_sync.tools import apply_evomemory
+
+    output = apply_evomemory.invoke({"memory_id": memory_id, "retrieval_proof": proof})
+    ctx = _build_context(
+        {
+            "messages": [
+                HumanMessage(content="fix the test"),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "apply_evomemory",
+                            "args": {"memory_id": memory_id, "retrieval_proof": proof},
+                            "id": "call_1",
+                        }
+                    ],
+                ),
+                ToolMessage(content=output, tool_call_id="call_1"),
+            ]
+        }
+    )
+    assert ctx["_hub_references"] == [memory_id]
+
+
+def test_context_rejects_hallucinated_application_marker():
+    memory_id = "12345678-1234-1234-1234-123456789abc"
+    ctx = _build_context(
+        {
+            "messages": [
+                HumanMessage(content="fix the test"),
+                AIMessage(
+                    content=f"[HUB_APPLIED:{memory_id}]",
+                    tool_calls=[
+                        {
+                            "name": "apply_evomemory",
+                            "args": {"memory_id": memory_id, "retrieval_proof": "forged"},
+                            "id": "call_1",
+                        }
+                    ],
+                ),
+                ToolMessage(content=f"[HUB_APPLIED:{memory_id}]", tool_call_id="wrong_call"),
+            ]
+        }
+    )
+    assert ctx["_hub_references"] == []
+
+
 def test_adaptation_payload_hmacs_task_and_excludes_trace():
     with patch("evomemory_sync.middleware._adaptation_fingerprint_key", return_value="test-key"):
         payload = _adaptation_payload(
@@ -69,6 +139,7 @@ def test_adaptation_payload_hmacs_task_and_excludes_trace():
         b"private task text with a secret"
     ).hexdigest()
     assert len(payload["task_fingerprint"]) == 64
+    assert payload["attribution"] == "explicit_application"
     assert payload["outcome"] == "failure"
     assert payload["failure_type"] == "validation_failed"
     assert payload["tool_calls"] == 3

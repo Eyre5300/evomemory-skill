@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Tuple
 import requests
 from langchain_core.tools import tool
 
+from .application_proof import consume_application_proof, issue_application_proof
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
 from .env_loader import env as _env, load_env
 from .hub_url import get_base_url
@@ -92,8 +93,15 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
     blocks: List[str] = []
     for i, item in enumerate(shown, 1):
         mem_id = str(item.get("id") or item.get("memory_id") or "unknown")
-        # Citation tag for traceability: middleware can detect these to avoid re-uploading
-        id_line = f"ID: {mem_id} [HUB_REF:{mem_id}]"
+        # The opaque proof permits a later explicit application event. It is kept
+        # local to this Agent trace and is never sent to the Hub.
+        try:
+            proof_tag = f" [HUB_APPLY_PROOF:{issue_application_proof(mem_id)}]"
+        except ValueError:
+            # A malformed upstream row remains viewable for diagnostics, but can
+            # never be promoted into an applied-outcome event.
+            proof_tag = ""
+        id_line = f"ID: {mem_id} [HUB_REF:{mem_id}]{proof_tag}"
         if kind == "ideation":
             title = str(item.get("title") or item.get("goal") or "(untitled)")
             core = str(item.get("core_idea") or item.get("core idea") or "")
@@ -228,6 +236,26 @@ def search_evomemory(query: str, memory_kind: str) -> str:
         return _format_results(kind, results, max_items=5)
     except Exception as e:
         return f"检索失败：{type(e).__name__}: {e}。建议检查 `EVOMEMORY_API_BASE_URL` 与网络连接。"
+
+
+@tool
+def apply_evomemory(memory_id: str, retrieval_proof: str) -> str:
+    """Explicitly mark one retrieved EvoMemory result as being applied.
+
+    Call this only after deciding that the result changes the plan, code, or
+    debugging step. Copy both ``memory_id`` and ``HUB_APPLY_PROOF`` from a prior
+    ``search_evomemory`` result. The middleware reports the eventual task
+    outcome; this call is only an attribution marker.
+    """
+    if not consume_application_proof(memory_id, retrieval_proof):
+        return (
+            "Application was not recorded: use a memory_id and HUB_APPLY_PROOF "
+            "returned by search_evomemory in this client."
+        )
+    return (
+        "EvoMemory application recorded locally. Now implement and validate the "
+        f"adapted step. [HUB_APPLIED:{str(memory_id).strip().lower()}]"
+    )
 
 
 def _require_auth_headers() -> tuple[dict[str, str] | None, str | None]:

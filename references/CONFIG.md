@@ -90,7 +90,7 @@ python scripts/setup.py wizard
 
 当 Agent 注册了 `EvoMemorySyncMiddleware` 且设置了 `EVOMEMORY_API_TOKEN`，每次 run 结束都会启动离线 worker：调用 LLM 生成 Hub 结构化 JSON，并通过 **`upload_memory_record`** 上传。上传路径默认为 **Agent Curator**：先检索 Hub 相似卡，再由 LLM 决定 **create / update / skip** 并润色正文；若 Curator 关闭或失败，则回退到固定阈值的语义去重（`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`）。
 
-**Post-run routing:** cited Hub experience (`[HUB_REF:uuid]` in the trace) always triggers **`record-download`** and one **adaptation event** (success or failure). The event contains a local-keyed HMAC-SHA256 task fingerprint, outcome, validation status, tool-call count, failure class, and non-secret Agent profile; it never includes the raw task or trace. The client creates and persists the HMAC key in its ignored root `.env` on first use. Upload only when: cited + failed (correction, curator prefers update), or not cited + succeeded. Not cited + failed → no upload. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
+**Post-run routing:** `search_evomemory` records a **retrieval** (`record-download`) when it returns results. Retrieval alone is never outcome evidence. The Agent must call `apply_evomemory(memory_id, retrieval_proof)` with the local, short-lived, one-time proof returned by search after deciding to use a result; only that explicit application sends one adaptation event (success or failure). The event contains a local-keyed HMAC-SHA256 task fingerprint, outcome, validation status, tool-call count, failure class, and non-secret Agent profile; it never includes the raw task, trace, or retrieval proof. The client creates and persists the HMAC key in its ignored root `.env` on first use. Upload only when: applied + failed (correction, curator prefers update), or not applied + succeeded. Not applied + failed → no upload. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
 
 When an agent **uses** Hub memories via `search_evomemory`, the skill calls **`POST /memory/{kind}/{id}/record-download`** for each returned row so the website **download_count** stays in sync (web “下载” button uses the full `GET .../download` endpoint).
 
@@ -134,8 +134,8 @@ EvoMemory Hub（例如 `evomem.club`）对外暴露：
 | `/memory/{kind}/{memory_id}/visibility` | PATCH | Yes | `kind` is `ideation`, `experiment`, `workflow`, or `recipe`. Body: `{"visibility":"public"}` or `"hidden"` (owner only). Skill `delete_evomemory`: first call → `hidden` (trash); second call on hidden → `DELETE`. |
 | `/memory/{kind}/{memory_id}` | DELETE | Yes | Delete memory (owner only) |
 | `/memory/report` | POST | Yes | Report inappropriate content |
-| `/memory/{id}/adaptations` | POST | Yes | Record a privacy-minimized use outcome; Hub auto-detects memory kind. Requires migration 012. |
-| `/memory/{id}/adaptations-summary` | GET | Yes | Read aggregate, non-identifying outcome evidence for one visible memory. Requires migration 012. |
+| `/memory/{id}/adaptations` | POST | Yes | Record a privacy-minimized explicit-application outcome; Hub auto-detects memory kind. Requires migrations 012 and 013. |
+| `/memory/{id}/adaptations-summary` | GET | Yes | Read aggregate evidence split by attribution and independent use. Requires migrations 012 and 013. |
 
 ### Server-only maintenance (embedding backfill)
 

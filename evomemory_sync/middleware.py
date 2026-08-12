@@ -169,7 +169,7 @@ def _last_tool_messages(messages: list[BaseMessage], limit: int = 6) -> list[dic
 
 
 def _extract_hub_references(messages: list[BaseMessage]) -> set[str]:
-    """Extract Hub experience IDs cited in the conversation via [HUB_REF:uuid] markers."""
+    """Extract Hub experience IDs retrieved into the conversation."""
     refs: set[str] = set()
     pattern = re.compile(r"\[HUB_REF:([a-f0-9\-]+)\]", re.IGNORECASE)
     for msg in messages:
@@ -189,11 +189,41 @@ def _extract_hub_references(messages: list[BaseMessage]) -> set[str]:
     return refs
 
 
+def _extract_applied_hub_references(messages: list[BaseMessage]) -> set[str]:
+    """Return results explicitly applied through the local tool capability.
+
+    Free-form ``[HUB_APPLIED:...]`` text is ignored because it can be
+    hallucinated. ``apply_evomemory`` consumes a process-local receipt, so the
+    middleware trusts its tool result marker rather than the model's arguments.
+    """
+    refs: set[str] = set()
+    for msg in messages:
+        if not isinstance(msg, AIMessage):
+            continue
+        for tc in getattr(msg, "tool_calls", None) or []:
+            name = str(tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "") or "")
+            if name != "apply_evomemory":
+                continue
+            call_id = str(tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", "") or "")
+            if not call_id:
+                continue
+            for result in messages:
+                if not isinstance(result, ToolMessage) or str(getattr(result, "tool_call_id", "")) != call_id:
+                    continue
+                text = _text_content(result)
+                match = re.search(r"\[HUB_APPLIED:([a-f0-9\-]{36})\]", text, re.IGNORECASE)
+                if match:
+                    refs.add(match.group(1).lower())
+                break
+    return refs
+
+
 def _build_context(state: AgentState) -> dict[str, Any]:
     messages = list(state.get("messages") or [])
     task = _first_human_task(messages)
     code, errors, has_err = _collect_tool_code_and_errors(messages)
-    hub_refs = _extract_hub_references(messages)
+    retrieved_hub_refs = _extract_hub_references(messages)
+    applied_hub_refs = _extract_applied_hub_references(messages)
     outcome = assess_run_outcome(messages, task=task)
     raw: dict[str, Any] = {
         "task_description": task,
@@ -205,7 +235,10 @@ def _build_context(state: AgentState) -> dict[str, Any]:
         "validation_reason": outcome["validation_reason"],
         "run_success_flag": outcome["run_success_flag"],
         "last_tool_messages": _last_tool_messages(messages),
-        "_hub_references": list(hub_refs) if hub_refs else [],
+        # This legacy worker/curator key now means "applied", not merely
+        # "present in a search result". Keep retrievals separately for metrics.
+        "_hub_references": list(applied_hub_refs) if applied_hub_refs else [],
+        "_retrieved_hub_references": list(retrieved_hub_refs) if retrieved_hub_refs else [],
         "_tool_call_count": sum(
             len(getattr(msg, "tool_calls", None) or []) for msg in messages if isinstance(msg, AIMessage)
         ),
@@ -253,6 +286,9 @@ def _adaptation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
             failure_type = "unsuccessful_run"
     return {
         "task_fingerprint": fingerprint,
+        # Only this middleware path is reachable after a valid local
+        # apply_evomemory capability was observed in the agent tool calls.
+        "attribution": "explicit_application",
         "outcome": "success" if success else "failure",
         "validation_status": str(ctx.get("validation_status") or "not_applicable"),
         "validation_reason": str(ctx.get("validation_reason") or "")[:500],
@@ -275,7 +311,9 @@ def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
     hub_refs = [str(x).strip() for x in (ctx.get("_hub_references") or []) if str(x).strip()]
     run_success = bool(ctx.get("run_success_flag", False))
 
-    record_download_ids = list(hub_refs)
+    # search_evomemory already records retrieval when it returns results. Do not
+    # count the same search again after the run, or downloads become inflated.
+    record_download_ids: list[str] = []
     adaptation_ids = list(hub_refs)
 
     should_upload = False

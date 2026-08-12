@@ -127,6 +127,7 @@ from EvoScientist.middleware import ToolErrorHandlerMiddleware, create_memory_mi
 from evomemory_sync import EvoMemorySyncMiddleware
 from evomemory_sync.tools import (
     search_evomemory,
+    apply_evomemory,
     delete_evomemory,
     list_my_evomemory,
     restore_evomemory,
@@ -141,6 +142,7 @@ mw = [
 # If you use AskUserMiddleware, insert it as EvoScientist does (often `mw.insert(0, ...)`).
 
 kwargs = load_mcp_and_build_kwargs(be, mw)
+kwargs["tools"].append(apply_evomemory)  # only explicit application becomes outcome evidence
 kwargs["tools"].append(search_evomemory)  # 注入：让智能体在执行中主动检索社区记忆
 kwargs["tools"].extend([delete_evomemory, list_my_evomemory, restore_evomemory])  # 可选：管理自己的上传
 agent = create_deep_agent(

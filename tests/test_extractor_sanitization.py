@@ -49,6 +49,12 @@ class TestExtractorSanitization(unittest.TestCase):
         self.assertNotIn("sk-abcdefghijklmnopqrst", out)
         self.assertIn("[REDACTED]", out)
 
+    def test_redacts_local_evomemory_application_capability(self) -> None:
+        proof = "a" * 64
+        out = sanitize_text(f"memory [HUB_APPLY_PROOF:{proof}]")
+        self.assertNotIn(proof, out)
+        self.assertIn("[HUB_APPLY_PROOF:REDACTED]", out)
+
 
 if __name__ == "__main__":
     unittest.main()

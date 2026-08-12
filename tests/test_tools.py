@@ -9,6 +9,32 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import evomemory_sync.tools as tools_module
 
 
+def test_apply_evomemory_requires_a_search_capability():
+    memory_id = "12345678-1234-1234-1234-123456789abc"
+    proof = tools_module.issue_application_proof(memory_id)
+    accepted = tools_module.apply_evomemory.invoke(
+        {"memory_id": memory_id, "retrieval_proof": proof}
+    )
+    rejected = tools_module.apply_evomemory.invoke(
+        {"memory_id": memory_id, "retrieval_proof": "forged"}
+    )
+    assert "recorded locally" in accepted
+    assert "not recorded" in rejected
+
+
+def test_apply_evomemory_receipt_cannot_be_replayed():
+    memory_id = "12345678-1234-1234-1234-123456789abc"
+    proof = tools_module.issue_application_proof(memory_id)
+    first = tools_module.apply_evomemory.invoke(
+        {"memory_id": memory_id, "retrieval_proof": proof}
+    )
+    replay = tools_module.apply_evomemory.invoke(
+        {"memory_id": memory_id, "retrieval_proof": proof}
+    )
+    assert "recorded locally" in first
+    assert "not recorded" in replay
+
+
 class TestOptionalAuthHeaders:
     def test_with_token(self):
         with mock.patch.object(tools_module, "_env", return_value="test-token-123"):
@@ -40,6 +66,12 @@ class TestTruncatePreviewText:
     def test_max_chars_zero(self):
         result = tools_module._truncate_preview_text("hello", max_chars=0)
         assert result == ""
+
+
+def test_malformed_search_row_is_not_issued_an_application_receipt():
+    rendered = tools_module._format_results("workflow", [{"id": "not-a-uuid"}], max_items=1)
+    assert "[HUB_REF:not-a-uuid]" in rendered
+    assert "HUB_APPLY_PROOF" not in rendered
 
 
 class TestDefaultTopK:
