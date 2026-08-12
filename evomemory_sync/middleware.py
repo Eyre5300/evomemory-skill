@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -198,6 +200,9 @@ def _build_context(state: AgentState) -> dict[str, Any]:
         "run_success_flag": outcome["run_success_flag"],
         "last_tool_messages": _last_tool_messages(messages),
         "_hub_references": list(hub_refs) if hub_refs else [],
+        "_tool_call_count": sum(
+            len(getattr(msg, "tool_calls", None) or []) for msg in messages if isinstance(msg, AIMessage)
+        ),
         "_agent_metadata": {
             "model": _env("EVOMEMORY_AGENT_MODEL") or _env("EVOMEMORY_EXTRACTOR_MODEL"),
             "instance_id": _env("EVOMEMORY_AGENT_INSTANCE_ID"),
@@ -209,13 +214,51 @@ def _build_context(state: AgentState) -> dict[str, Any]:
     return sanitize_context(raw)
 
 
+def _adaptation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Build the exact, privacy-minimized Hub adaptation payload.
+
+    A stable SHA-256 groups repeat attempts on the same task without exposing the
+    prompt. Do not add trace or task text here: the Hub only needs an outcome
+    signal to estimate experience quality.
+    """
+    task = str(ctx.get("task_description") or "").replace("\r\n", "\n").strip()
+    fingerprint = hashlib.sha256(task.encode("utf-8")).hexdigest()
+    success = bool(ctx.get("run_success_flag", False))
+    metadata = ctx.get("_agent_metadata") or {}
+    profile = {
+        "model": str(metadata.get("model") or "unknown")[:300],
+        "harness": _env("EVOMEMORY_AGENT_HARNESS") or "unknown",
+        "python": platform.python_version(),
+        "os": platform.system().lower(),
+    }
+    failure_type = None
+    if not success:
+        if ctx.get("has_tool_error_flag"):
+            failure_type = "tool_error"
+        elif ctx.get("has_code_runtime_error_flag"):
+            failure_type = "runtime_error"
+        elif ctx.get("validation_status") == "failed":
+            failure_type = "validation_failed"
+        else:
+            failure_type = "unsuccessful_run"
+    return {
+        "task_fingerprint": fingerprint,
+        "outcome": "success" if success else "failure",
+        "validation_status": str(ctx.get("validation_status") or "not_applicable"),
+        "validation_reason": str(ctx.get("validation_reason") or "")[:500],
+        "agent_profile": profile,
+        "tool_calls": max(0, int(ctx.get("_tool_call_count") or 0)),
+        "failure_type": failure_type,
+    }
+
+
 def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
-    """Decide record-download, verify, and upload after an agent run.
+    """Decide record-download, adaptation, and upload after an agent run.
 
     Policy (success = tool OK + code OK + validation OK when applicable):
     - Cited Hub experience → always record-download (success or failure).
-    - Cited + success → verify only, no upload.
-    - Cited + failure → record-download, no verify, upload correction (curator may update own card).
+    - Cited + success → record adaptation, no upload.
+    - Cited + failure → record adaptation and upload correction (curator may update own card).
     - No citation + success → upload (must pass duplicate check upstream).
     - No citation + failure → no upload.
     """
@@ -223,7 +266,7 @@ def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
     run_success = bool(ctx.get("run_success_flag", False))
 
     record_download_ids = list(hub_refs)
-    verify_ids = list(hub_refs) if hub_refs and run_success else []
+    adaptation_ids = list(hub_refs)
 
     should_upload = False
     if hub_refs and not run_success:
@@ -235,7 +278,7 @@ def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
     return {
         "hub_refs": hub_refs,
         "record_download_ids": record_download_ids,
-        "verify_ids": verify_ids,
+        "adaptation_ids": adaptation_ids,
         "should_upload": should_upload,
     }
 
@@ -279,35 +322,22 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
             except Exception as e:
                 logger.debug("evomemory_sync: record-download %s failed: %s", ref_id, e)
 
-    def _send_verify(self, hub_ref_ids: list[str]) -> None:
-        """POST verification after a successful run that used cited Hub experience."""
-        import requests
-        from .hub_url import get_base_url
-        from .uploader import tls_verify
+    def _send_adaptations(self, hub_ref_ids: list[str], ctx: dict[str, Any]) -> None:
+        """Send one outcome event per cited memory, for every memory kind."""
+        from .hub_usage import record_adaptation_by_id
 
         headers = self._hub_headers_or_none()
         if not headers:
             return
-        base = get_base_url()
-        timeout = float(os.getenv("EVOMEMORY_API_TIMEOUT_SECONDS", "30") or "30")
+        payload = _adaptation_payload(ctx)
         for ref_id in hub_ref_ids:
             if not re.match(r"^[0-9a-f\-]{36}$", ref_id, re.IGNORECASE):
                 logger.warning("skipping invalid hub ref_id: %s", ref_id)
                 continue
             try:
-                r = requests.post(
-                    f"{base}/memory/{ref_id}/verify",
-                    json={},
-                    headers=headers,
-                    timeout=timeout,
-                    verify=tls_verify(),
-                )
-                if r.status_code < 300:
-                    logger.info("evomemory_sync: verified %s", ref_id)
-                else:
-                    logger.debug("evomemory_sync: verify %s returned %s", ref_id, r.status_code)
+                record_adaptation_by_id(ref_id, payload, headers=headers)
             except Exception as e:
-                logger.debug("evomemory_sync: verify %s failed: %s", ref_id, e)
+                logger.debug("evomemory_sync: adaptation %s failed: %s", ref_id, e)
 
     def _finalize(self, state: AgentState, runtime: Runtime) -> None:
         _maybe_load_dotenv()
@@ -329,15 +359,15 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
             except Exception:
                 logger.warning("evomemory_sync: record-download failed", exc_info=True)
 
-        if actions["verify_ids"]:
+        if actions["adaptation_ids"]:
             logger.info(
-                "evomemory_sync: task succeeded using Hub refs %s → verify (no upload)",
-                actions["verify_ids"],
+                "evomemory_sync: cited Hub refs %s → record adaptation evidence",
+                actions["adaptation_ids"],
             )
             try:
-                self._send_verify(actions["verify_ids"])
+                self._send_adaptations(actions["adaptation_ids"], ctx)
             except Exception:
-                logger.warning("evomemory_sync: verify request failed", exc_info=True)
+                logger.warning("evomemory_sync: adaptation request failed", exc_info=True)
 
         if not actions["should_upload"]:
             if not hub_refs and not ctx.get("run_success_flag"):

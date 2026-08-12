@@ -20,6 +20,16 @@ def usage_tracking_enabled() -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
+def adaptation_tracking_enabled() -> bool:
+    """Whether post-run outcome evidence is sent to the Hub.
+
+    This is separate from download tracking so installations can keep the latter
+    while opting out of quality telemetry. Payloads never contain raw traces.
+    """
+    raw = _env("EVOMEMORY_RECORD_ADAPTATION_ON_USE", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
 def _post_record(url: str, headers: dict[str, str] | None = None) -> None:
     req_headers = {
         "User-Agent": BROWSER_UA,
@@ -46,6 +56,45 @@ def record_download_by_id(memory_id: str, headers: dict[str, str] | None = None)
         return
     base = get_base_url()
     _post_record(f"{base}/memory/{mid}/record-download", headers=headers)
+
+
+def record_adaptation_by_id(
+    memory_id: str,
+    payload: dict[str, Any],
+    headers: dict[str, str] | None = None,
+) -> None:
+    """Record a privacy-minimized outcome for a referenced Hub memory.
+
+    ``payload`` is deliberately constructed by middleware from a task hash and
+    outcome flags only. It must not be extended with prompts, trace text, or tool
+    output without a separate privacy review.
+    """
+    if not adaptation_tracking_enabled():
+        return
+    mid = (memory_id or "").strip()
+    if not mid:
+        return
+    req_headers = {
+        "User-Agent": BROWSER_UA,
+        "Accept": DEFAULT_ACCEPT,
+        "Accept-Language": DEFAULT_ACCEPT_LANGUAGE,
+        "Content-Type": "application/json",
+    }
+    if headers:
+        req_headers.update(headers)
+    timeout = float(_env("EVOMEMORY_API_TIMEOUT_SECONDS", "15") or "15")
+    try:
+        r = requests.post(
+            f"{get_base_url()}/memory/{mid}/adaptations",
+            json=payload,
+            headers=req_headers,
+            timeout=timeout,
+            verify=tls_verify(),
+        )
+        if r.status_code >= 400:
+            logger.debug("record-adaptation %s -> HTTP %s", mid, r.status_code)
+    except Exception as e:
+        logger.debug("record-adaptation failed %s: %s", mid, e)
 
 
 def record_downloads_for_results(
