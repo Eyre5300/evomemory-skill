@@ -1,7 +1,9 @@
 """Tests for evomemory_sync.middleware — post-run routing."""
 
+import hashlib
 import os
 import sys
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -48,20 +50,24 @@ class TestResolvePostRunActions:
         assert actions["should_upload"] is True
 
 
-def test_adaptation_payload_hashes_task_and_excludes_trace():
-    payload = _adaptation_payload(
-        {
-            "task_description": "private task text with a secret",
-            "run_success_flag": False,
-            "validation_status": "failed",
-            "validation_reason": "validation or ground-truth mismatch detected",
-            "has_tool_error_flag": False,
-            "has_code_runtime_error_flag": False,
-            "_tool_call_count": 3,
-            "_agent_metadata": {"model": "test-model"},
-        }
-    )
+def test_adaptation_payload_hmacs_task_and_excludes_trace():
+    with patch("evomemory_sync.middleware._adaptation_fingerprint_key", return_value="test-key"):
+        payload = _adaptation_payload(
+            {
+                "task_description": "private task text with a secret",
+                "run_success_flag": False,
+                "validation_status": "failed",
+                "validation_reason": "validation or ground-truth mismatch detected",
+                "has_tool_error_flag": False,
+                "has_code_runtime_error_flag": False,
+                "_tool_call_count": 3,
+                "_agent_metadata": {"model": "test-model"},
+            }
+        )
     assert payload["task_fingerprint"] != "private task text with a secret"
+    assert payload["task_fingerprint"] != hashlib.sha256(
+        b"private task text with a secret"
+    ).hexdigest()
     assert len(payload["task_fingerprint"]) == 64
     assert payload["outcome"] == "failure"
     assert payload["failure_type"] == "validation_failed"

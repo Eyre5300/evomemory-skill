@@ -9,6 +9,7 @@ Goal:
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 
 
@@ -80,4 +81,46 @@ def env_float(name: str, default: float) -> float:
         return float(val)
     except ValueError:
         return default
+
+
+def adaptation_fingerprint_key() -> str:
+    """Return a stable local secret for privacy-preserving task fingerprints.
+
+    A raw SHA-256 of common task text is vulnerable to dictionary guessing.  This
+    per-installation key lets the client report stable HMAC fingerprints for local
+    deduplication without making task text enumerable from the Hub database.  The
+    value is persisted in the canonical root `.env` when possible; environments
+    with a read-only skill directory retain a process-local fallback instead.
+    """
+    existing = os.getenv("EVOMEMORY_ADAPTATION_FINGERPRINT_KEY", "").strip()
+    if existing:
+        return existing
+
+    path = repo_root() / ".env"
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            key, sep, value = line.partition("=")
+            if sep and key.strip() == "EVOMEMORY_ADAPTATION_FINGERPRINT_KEY":
+                persisted = value.strip()
+                if persisted:
+                    os.environ["EVOMEMORY_ADAPTATION_FINGERPRINT_KEY"] = persisted
+                    return persisted
+    except OSError:
+        pass
+
+    key = secrets.token_urlsafe(32)
+    try:
+        existing_text = path.read_text(encoding="utf-8") if path.exists() else ""
+        separator = "" if not existing_text or existing_text.endswith("\n") else "\n"
+        path.write_text(
+            existing_text + separator + f"EVOMEMORY_ADAPTATION_FINGERPRINT_KEY={key}\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        # Do not suppress adaptation evidence just because a packaged skill is
+        # installed read-only. The caller still gets privacy protection for this
+        # process, but cross-restart task deduplication will not be available.
+        pass
+    os.environ["EVOMEMORY_ADAPTATION_FINGERPRINT_KEY"] = key
+    return key
 

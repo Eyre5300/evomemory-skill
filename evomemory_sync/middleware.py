@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -20,7 +21,12 @@ from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 
-from .env_loader import env_bool as _env_bool, env as _env, load_env
+from .env_loader import (
+    adaptation_fingerprint_key as _adaptation_fingerprint_key,
+    env_bool as _env_bool,
+    env as _env,
+    load_env,
+)
 from .run_outcome import assess_run_outcome
 from .sanitize import sanitize_context
 
@@ -217,12 +223,16 @@ def _build_context(state: AgentState) -> dict[str, Any]:
 def _adaptation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
     """Build the exact, privacy-minimized Hub adaptation payload.
 
-    A stable SHA-256 groups repeat attempts on the same task without exposing the
-    prompt. Do not add trace or task text here: the Hub only needs an outcome
-    signal to estimate experience quality.
+    A stable, local-keyed HMAC groups repeat attempts on the same task without
+    exposing an enumerable raw task hash. Do not add trace or task text here: the
+    Hub only needs an outcome signal to estimate experience quality.
     """
     task = str(ctx.get("task_description") or "").replace("\r\n", "\n").strip()
-    fingerprint = hashlib.sha256(task.encode("utf-8")).hexdigest()
+    fingerprint = hmac.new(
+        _adaptation_fingerprint_key().encode("utf-8"),
+        task.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
     success = bool(ctx.get("run_success_flag", False))
     metadata = ctx.get("_agent_metadata") or {}
     profile = {

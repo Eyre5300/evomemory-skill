@@ -1,4 +1,5 @@
 import unittest
+from tempfile import TemporaryDirectory
 
 import importlib.util
 from pathlib import Path
@@ -18,6 +19,25 @@ class TestEnvLoader(unittest.TestCase):
         paths = candidate_env_paths()
         self.assertEqual(paths[0], root / ".env")
         self.assertEqual(paths[1], root / "scripts" / ".env")
+
+    def test_adaptation_key_is_created_once_and_reused(self) -> None:
+        original_root = _MOD.repo_root
+        old_key = _MOD.os.environ.pop("EVOMEMORY_ADAPTATION_FINGERPRINT_KEY", None)
+        try:
+            with TemporaryDirectory() as temp:
+                root = Path(temp)
+                _MOD.repo_root = lambda: root
+                first = _MOD.adaptation_fingerprint_key()
+                _MOD.os.environ.pop("EVOMEMORY_ADAPTATION_FINGERPRINT_KEY", None)
+                second = _MOD.adaptation_fingerprint_key()
+                self.assertEqual(first, second)
+                self.assertIn("EVOMEMORY_ADAPTATION_FINGERPRINT_KEY=", (root / ".env").read_text())
+        finally:
+            _MOD.repo_root = original_root
+            if old_key is None:
+                _MOD.os.environ.pop("EVOMEMORY_ADAPTATION_FINGERPRINT_KEY", None)
+            else:
+                _MOD.os.environ["EVOMEMORY_ADAPTATION_FINGERPRINT_KEY"] = old_key
 
 
 if __name__ == "__main__":

@@ -71,7 +71,8 @@ python scripts/setup.py wizard
 | `EVOMEMORY_CURATOR_MODEL` | No | same as `EVOMEMORY_EXTRACTOR_MODEL` | Model for upload curator (OpenAI-compatible chat) |
 | `EVOMEMORY_CURATOR_TIMEOUT_SECONDS` | No | same as extractor | HTTP timeout for curator LLM call |
 | `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` | No | `true` | When `search_evomemory` returns results, POST `record-download` so web download counts increment |
-| `EVOMEMORY_RECORD_ADAPTATION_ON_USE` | No | `true` | When a cited Hub memory is used, send a privacy-minimized outcome event: task SHA-256, success/failure, validation status, and non-secret Agent profile. No task text or trace is sent. |
+| `EVOMEMORY_RECORD_ADAPTATION_ON_USE` | No | `true` | When a cited Hub memory is used, send a privacy-minimized outcome event: local-keyed task HMAC-SHA256, success/failure, validation status, and non-secret Agent profile. No task text or trace is sent. |
+| `EVOMEMORY_ADAPTATION_FINGERPRINT_KEY` | No | generated once in root `.env` | Per-installation secret used to HMAC task fingerprints. Keep it private; it supports local repeat-task deduplication, not cross-user task matching. |
 | `EVOMEMORY_HUB_RESOLVE_CACHE_TTL_SECONDS` | No | `3600` | How long `resolve_working_hub_base_url_cached` keeps a probe result (long-running agents can pick up Hub URL changes without restart) |
 | `EVOMEMORY_HUB_RESOLVE_CACHE_MAX_ENTRIES` | No | `32` | Max cached Hub origins (FIFO eviction) |
 | `EVOMEMORY_SEARCH_TOP_K` | No | 10 | Default for `scripts/search.py` `--top-k` (1–100) |
@@ -89,7 +90,7 @@ python scripts/setup.py wizard
 
 当 Agent 注册了 `EvoMemorySyncMiddleware` 且设置了 `EVOMEMORY_API_TOKEN`，每次 run 结束都会启动离线 worker：调用 LLM 生成 Hub 结构化 JSON，并通过 **`upload_memory_record`** 上传。上传路径默认为 **Agent Curator**：先检索 Hub 相似卡，再由 LLM 决定 **create / update / skip** 并润色正文；若 Curator 关闭或失败，则回退到固定阈值的语义去重（`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`）。
 
-**Post-run routing:** cited Hub experience (`[HUB_REF:uuid]` in the trace) always triggers **`record-download`** and one **adaptation event** (success or failure). The event contains a SHA-256 task fingerprint, outcome, validation status, tool-call count, failure class, and non-secret Agent profile; it never includes the raw task or trace. Upload only when: cited + failed (correction, curator prefers update), or not cited + succeeded. Not cited + failed → no upload. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
+**Post-run routing:** cited Hub experience (`[HUB_REF:uuid]` in the trace) always triggers **`record-download`** and one **adaptation event** (success or failure). The event contains a local-keyed HMAC-SHA256 task fingerprint, outcome, validation status, tool-call count, failure class, and non-secret Agent profile; it never includes the raw task or trace. The client creates and persists the HMAC key in its ignored root `.env` on first use. Upload only when: cited + failed (correction, curator prefers update), or not cited + succeeded. Not cited + failed → no upload. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
 
 When an agent **uses** Hub memories via `search_evomemory`, the skill calls **`POST /memory/{kind}/{id}/record-download`** for each returned row so the website **download_count** stays in sync (web “下载” button uses the full `GET .../download` endpoint).
 
