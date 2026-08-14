@@ -13,6 +13,7 @@ import requests
 from .env_loader import env as _env, env_bool as _env_bool
 from .extraction_fields import EXTRACTOR_SYSTEM_PROMPT
 from .sanitize import sanitize_context as _sanitize_context
+from .usage_telemetry import record_llm_usage
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,7 @@ def _call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:
         except (json.JSONDecodeError, ValueError) as exc:
             logger.warning("evomemory_sync: LLM returned non-JSON (status %s): %.200s", r.status_code, r.text[:200])
             raise RuntimeError(f"LLM response is not valid JSON: {exc}") from exc
+        record_llm_usage("extractor", model, data)
         choice = data["choices"][0]["message"]
         raw = choice.get("content") or ""
         if isinstance(raw, list):

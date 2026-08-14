@@ -190,6 +190,7 @@ def _call_curator_llm(draft: dict[str, Any], similar_ctx: dict[str, Any]) -> dic
     # Re-use extractor's HTTP client by temporarily swapping prompt through monkeypatch pattern:
     # duplicate minimal call here importing from extractor internals.
     from .extractor import _extractor_base_url, _extractor_api_key, _extractor_model, _parse_json_object, _tls_verify
+    from .usage_telemetry import record_llm_usage
 
     import requests
 
@@ -214,6 +215,7 @@ def _call_curator_llm(draft: dict[str, Any], similar_ctx: dict[str, Any]) -> dic
         r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=_tls_verify())
         r.raise_for_status()
         data = r.json()
+        record_llm_usage("upload_curator", model, data)
         raw = data["choices"][0]["message"].get("content") or ""
         return _parse_json_object(str(raw))
     except Exception as e:
