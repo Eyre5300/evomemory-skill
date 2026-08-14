@@ -5,8 +5,9 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import logging
 
@@ -20,7 +21,13 @@ logger = logging.getLogger("evomemory_sync.workflow_executor")
 from .agent_tools import _base_url
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
 from .uploader import env, tls_verify
-from .workflow_schema import EvoWorkflow, LLMConfig, WorkflowEnvironment
+from .workflow_schema import (
+    EvoWorkflow,
+    LLMConfig,
+    WorkflowEnvironment,
+    WorkflowExecutionPolicy,
+    WorkflowPermissions,
+)
 
 _DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 
@@ -86,6 +93,12 @@ async def download_workflow(memory_id: str) -> EvoWorkflow:
     env_cfg = tool_config.get("environment") if isinstance(tool_config.get("environment"), dict) else {}
     tools = tool_config.get("tools") if isinstance(tool_config.get("tools"), list) else []
     metadata = tool_config.get("metadata") if isinstance(tool_config.get("metadata"), dict) else {}
+    permissions = tool_config.get("permissions") if isinstance(tool_config.get("permissions"), dict) else {}
+    execution_policy = (
+        tool_config.get("execution_policy")
+        if isinstance(tool_config.get("execution_policy"), dict)
+        else {}
+    )
     version = str(tool_config.get("version") or "1.0")
 
     return EvoWorkflow(
@@ -96,8 +109,21 @@ async def download_workflow(memory_id: str) -> EvoWorkflow:
         llm_config=LLMConfig(**llm_cfg),
         environment=WorkflowEnvironment(**env_cfg),
         tools=[str(t) for t in tools],
+        permissions=WorkflowPermissions(**permissions),
+        execution_policy=WorkflowExecutionPolicy(**execution_policy),
         metadata=metadata,
     )
+
+
+ToolCapability = Literal["network", "filesystem_read", "filesystem_write", "shell"]
+
+
+@dataclass(frozen=True)
+class WorkflowToolSpec:
+    """Locally trusted tool registration with explicit capability metadata."""
+
+    handler: BaseTool | Callable[..., Any]
+    capabilities: frozenset[ToolCapability] = frozenset()
 
 
 class WorkflowRunner:
@@ -109,21 +135,59 @@ class WorkflowRunner:
         "custom-anthropic",
     }
 
-    def __init__(self, workflow: EvoWorkflow, tool_registry: dict[str, Callable[..., Any]]):
+    def __init__(
+        self,
+        workflow: EvoWorkflow,
+        tool_registry: dict[str, Callable[..., Any] | WorkflowToolSpec],
+        *,
+        approved_tools: set[str] | frozenset[str] | None = None,
+        allow_legacy_unclassified: bool = False,
+    ):
         self.workflow = workflow
         self.tool_registry = tool_registry
+        self.approved_tools = frozenset(approved_tools or ())
+        self.allow_legacy_unclassified = bool(allow_legacy_unclassified)
         self.loaded_tools = self._load_tools()
 
     def _load_tools(self) -> list[BaseTool | Callable[..., Any]]:
         """加载工具。注册表中的工具建议是 BaseTool 或 @tool 装饰函数。"""
         loaded: list[BaseTool | Callable[..., Any]] = []
+        declared = set(self.workflow.permissions.tools)
         for tool_name in self.workflow.tools:
-            fn = self.tool_registry.get(tool_name)
-            if fn is None:
+            if tool_name not in declared:
+                logger.warning("工作流工具 '%s' 未在 permissions.tools 声明，已拒绝。", tool_name)
+                continue
+            if tool_name not in self.approved_tools:
+                logger.warning("工作流工具 '%s' 未获本地 approved_tools 授权，已拒绝。", tool_name)
+                continue
+            registered = self.tool_registry.get(tool_name)
+            if registered is None:
                 logger.warning("工作流需要的工具 '%s' 在本地注册表中未找到。", tool_name)
                 continue
-            loaded.append(fn)
+            if isinstance(registered, WorkflowToolSpec):
+                denied = self._denied_capabilities(registered.capabilities)
+                if denied:
+                    logger.warning("工作流工具 '%s' 缺少 manifest 权限 %s，已拒绝。", tool_name, sorted(denied))
+                    continue
+                loaded.append(registered.handler)
+            elif self.allow_legacy_unclassified:
+                loaded.append(registered)
+            else:
+                logger.warning("工作流工具 '%s' 没有 capability 元数据，默认拒绝。", tool_name)
         return loaded
+
+    def _denied_capabilities(self, capabilities: frozenset[ToolCapability]) -> set[str]:
+        permissions = self.workflow.permissions
+        denied: set[str] = set()
+        if "network" in capabilities and not permissions.network_domains:
+            denied.add("network_domains")
+        if "filesystem_read" in capabilities and not permissions.read_paths:
+            denied.add("read_paths")
+        if "filesystem_write" in capabilities and not permissions.write_paths:
+            denied.add("write_paths")
+        if "shell" in capabilities and not permissions.allow_shell:
+            denied.add("allow_shell")
+        return denied
 
     def _infer_provider(self, model_name: str) -> str:
         """
@@ -251,7 +315,10 @@ class WorkflowRunner:
             self.loaded_tools,
             state_modifier=system_prompt,
         )
-        result_state = agent_executor.invoke({"messages": [("user", user_input)]})
+        result_state = agent_executor.invoke(
+            {"messages": [("user", user_input)]},
+            config={"recursion_limit": self.workflow.execution_policy.max_steps},
+        )
         final_message = result_state["messages"][-1].content
         logger.info("工作流执行结束: %s", self.workflow.title)
-        return str(final_message)
+        return str(final_message)[: self.workflow.execution_policy.max_output_chars]

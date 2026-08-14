@@ -10,9 +10,15 @@ from .agent_tools import (
     share_workflow,
 )
 from .middleware import EvoMemorySyncMiddleware
-from .workflow_executor import WorkflowRunner, download_workflow
+from .workflow_executor import WorkflowRunner, WorkflowToolSpec, download_workflow
 from .workflow_exporter import export_and_upload_workflow
-from .workflow_schema import EvoWorkflow, LLMConfig, WorkflowEnvironment
+from .workflow_schema import (
+    EvoWorkflow,
+    LLMConfig,
+    WorkflowEnvironment,
+    WorkflowExecutionPolicy,
+    WorkflowPermissions,
+)
 
 __all__ = [
     "AGENT_SYSTEM_PROMPT_EXTENSION",
@@ -21,7 +27,10 @@ __all__ = [
     "EvoMemorySyncMiddleware",
     "LLMConfig",
     "WorkflowEnvironment",
+    "WorkflowExecutionPolicy",
+    "WorkflowPermissions",
     "WorkflowRunner",
+    "WorkflowToolSpec",
     "download_workflow",
     "export_and_upload_workflow",
     "patch_experiment_parent_link",

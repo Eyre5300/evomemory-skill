@@ -39,6 +39,8 @@ async def export_and_upload_workflow(
         "llm_config": workflow.llm_config.model_dump(),
         "environment": workflow.environment.model_dump(),
         "tools": workflow.tools,
+        "permissions": workflow.permissions.model_dump(),
+        "execution_policy": workflow.execution_policy.model_dump(),
         "metadata": workflow.metadata,
     }
     tool_configuration_str = json.dumps(tool_config_payload, ensure_ascii=False)

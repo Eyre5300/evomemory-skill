@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -12,6 +12,31 @@ class LLMConfig(BaseModel):
 class WorkflowEnvironment(BaseModel):
     hardware_requirements: Optional[str] = None
     software_dependencies: Optional[str] = None
+
+
+class WorkflowPermissions(BaseModel):
+    """Untrusted workflow permission request; it never grants local access by itself."""
+
+    tools: List[str] = Field(default_factory=list)
+    network_domains: List[str] = Field(default_factory=list)
+    read_paths: List[str] = Field(default_factory=list)
+    write_paths: List[str] = Field(default_factory=list)
+    allow_shell: bool = False
+
+    @field_validator("tools", "network_domains", "read_paths", "write_paths")
+    @classmethod
+    def unique_nonempty_values(cls, value: List[str]) -> List[str]:
+        clean: list[str] = []
+        for raw in value:
+            item = str(raw).strip()
+            if item and item not in clean:
+                clean.append(item)
+        return clean
+
+
+class WorkflowExecutionPolicy(BaseModel):
+    max_steps: int = Field(default=25, ge=1, le=100)
+    max_output_chars: int = Field(default=20_000, ge=100, le=200_000)
 
 
 class EvoWorkflow(BaseModel):
@@ -29,6 +54,8 @@ class EvoWorkflow(BaseModel):
         default_factory=list,
         description="需要调用的核心工具名称列表，如 ['web_search', 'python_repl']",
     )
+    permissions: WorkflowPermissions = Field(default_factory=WorkflowPermissions)
+    execution_policy: WorkflowExecutionPolicy = Field(default_factory=WorkflowExecutionPolicy)
     metadata: Dict[str, Any] = Field(
         default_factory=dict,
         description="可选扩展元数据，供后续版本平滑扩展",
@@ -44,3 +71,15 @@ class EvoWorkflow(BaseModel):
                 "prompts 缺少必填键或值为空: " + ", ".join(sorted(missing))
             )
         return value
+
+    @field_validator("tools")
+    @classmethod
+    def validate_tools(cls, value: List[str]) -> List[str]:
+        clean: list[str] = []
+        for raw in value:
+            name = str(raw).strip()
+            if not name:
+                raise ValueError("tools contains an empty tool name")
+            if name not in clean:
+                clean.append(name)
+        return clean

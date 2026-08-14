@@ -94,6 +94,22 @@ python scripts/setup.py wizard
 
 **Post-run routing:** `search_evomemory` only returns results and does **not** count a retrieval. For an authenticated search, each result carries a short-lived proof signed by the Hub and bound to the account, memory ID, and content revision. After deciding to use a result, the Agent calls `apply_evomemory(memory_id, retrieval_proof)`; the Hub verifies the proof, records one retrieval per account/revision, and returns an idempotent `application_id`. Only a real tool result containing that ID can be attributed by middleware. The eventual success or failure event contains the application ID, a local-keyed HMAC-SHA256 task fingerprint, weak Agent self-check status, tool-call count, failure class, and non-secret Agent profile; it never contains the raw task, trace, or proof. Strong validation types are reserved for trusted Hub verifiers. Upload only when: applied + failed (correction, curator prefers update), or not applied + succeeded. Not applied + failed → no upload. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
 
+### Downloaded workflow permissions
+
+Downloaded workflows are untrusted. `WorkflowRunner` uses two independent gates: the workflow must declare a tool in `permissions.tools`, and the local caller must include it in `approved_tools`. Registry entries should be `WorkflowToolSpec` values declaring `network`, `filesystem_read`, `filesystem_write`, or `shell` capabilities. Missing capability metadata, missing scopes, legacy workflows, and unapproved tools are denied by default.
+
+```python
+from evomemory_sync import WorkflowRunner, WorkflowToolSpec
+
+runner = WorkflowRunner(
+    workflow,
+    {"web_search": WorkflowToolSpec(web_search, frozenset({"network"}))},
+    approved_tools={"web_search"},
+)
+```
+
+The remote manifest can request `network_domains`, `read_paths`, `write_paths`, and `allow_shell`, but cannot grant those permissions locally. Execution is additionally bounded by `execution_policy.max_steps` and `max_output_chars`.
+
 When an agent **uses** Hub memories via `search_evomemory`, the skill calls **`POST /memory/{kind}/{id}/record-download`** for each returned row so the website **download_count** stays in sync (web “下载” button uses the full `GET .../download` endpoint).
 
 ## Semantic search (`search.py`)
