@@ -320,7 +320,8 @@ def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
     Policy (success = tool OK + code OK + validation OK when applicable):
     - Cited Hub experience → always record-download (success or failure).
     - Cited + success → record adaptation, no upload.
-    - Cited + failure → record adaptation and upload correction (curator may update own card).
+    - Cited + failure → record negative adaptation only. An unvalidated failed
+      run must never publish a correction or success-shaped memory.
     - No citation + success → upload (must pass duplicate check upstream).
     - No citation + failure → no upload.
     """
@@ -333,10 +334,7 @@ def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
     adaptation_ids = list(hub_refs)
 
     should_upload = False
-    if hub_refs and not run_success:
-        should_upload = True
-        ctx["_correcting_after_hub_failure"] = True
-    elif not hub_refs and run_success:
+    if not hub_refs and run_success:
         should_upload = True
 
     return {
@@ -424,6 +422,29 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
         if headers:
             flush_pending_outcomes(headers)
 
+    def report_outcomes_on_error(self, state: AgentState) -> dict[str, Any] | None:
+        """Report application-bound outcomes when the host agent aborts.
+
+        LangGraph does not call ``after_agent`` for terminal graph errors such
+        as a recursion-limit exception. Runners that preserve the latest state
+        can call this method from their exception handler. It never launches an
+        extractor worker or uploads a memory.
+        """
+        _maybe_load_dotenv()
+        if not self._is_enabled():
+            return None
+        self._flush_pending_adaptations()
+        messages = list(state.get("messages") or [])
+        if len(messages) < 2:
+            return None
+        ctx = _build_context(state)
+        if not ctx.get("task_description"):
+            return None
+        actions = _resolve_post_run_actions(ctx)
+        if actions["adaptation_ids"]:
+            self._send_adaptations(actions["adaptation_ids"], ctx)
+        return ctx
+
     def _finalize(self, state: AgentState, runtime: Runtime) -> None:
         _maybe_load_dotenv()
         if not self._is_enabled():
@@ -466,14 +487,7 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
                 )
             return
 
-        if hub_refs:
-            ctx.setdefault("_hub_references", hub_refs)
-            logger.info(
-                "evomemory_sync: task failed despite Hub refs %s → upload correction (duplicate check)",
-                hub_refs,
-            )
-        else:
-            logger.info("evomemory_sync: run succeeded without Hub refs → upload (duplicate check)")
+        logger.info("evomemory_sync: run succeeded without Hub refs → upload (duplicate check)")
 
         tmp_path: str | None = None
         try:

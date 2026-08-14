@@ -26,7 +26,7 @@ class TestResolvePostRunActions:
         assert actions["adaptation_ids"] == ["abc-123", "def-456"]
         assert actions["should_upload"] is False
 
-    def test_applied_hub_refs_failure_uploads_correction(self):
+    def test_applied_hub_refs_failure_records_negative_outcome_without_upload(self):
         ctx = {
             "_hub_references": ["abc-123"],
             "run_success_flag": False,
@@ -34,8 +34,8 @@ class TestResolvePostRunActions:
         actions = _resolve_post_run_actions(ctx)
         assert actions["record_download_ids"] == []
         assert actions["adaptation_ids"] == ["abc-123"]
-        assert actions["should_upload"] is True
-        assert ctx["_correcting_after_hub_failure"] is True
+        assert actions["should_upload"] is False
+        assert "_correcting_after_hub_failure" not in ctx
 
     def test_no_hub_refs_success_upload(self):
         ctx = {"run_success_flag": True}
