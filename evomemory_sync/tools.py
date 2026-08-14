@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Tuple
 import requests
 from langchain_core.tools import tool
 
-from .application_proof import consume_application_proof, issue_application_proof
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
 from .env_loader import env as _env, load_env
 from .hub_url import get_base_url
@@ -93,15 +92,13 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
     blocks: List[str] = []
     for i, item in enumerate(shown, 1):
         mem_id = str(item.get("id") or item.get("memory_id") or "unknown")
-        # The opaque proof permits a later explicit application event. It is kept
-        # local to this Agent trace and is never sent to the Hub.
-        try:
-            proof_tag = f" [HUB_APPLY_PROOF:{issue_application_proof(mem_id)}]"
-        except ValueError:
-            # A malformed upstream row remains viewable for diagnostics, but can
-            # never be promoted into an applied-outcome event.
-            proof_tag = ""
+        # Only the authenticated Hub can issue an application capability. An
+        # anonymous/malformed result remains viewable but cannot produce trusted
+        # quality evidence.
+        hub_proof = str(item.get("hub_retrieval_proof") or "").strip()
+        proof_tag = f" [HUB_APPLY_PROOF:{hub_proof}]" if hub_proof else ""
         id_line = f"ID: {mem_id} [HUB_REF:{mem_id}]{proof_tag}"
+        lifecycle = str(item.get("lifecycle_state") or "candidate")
         if kind == "ideation":
             title = str(item.get("title") or item.get("goal") or "(untitled)")
             core = str(item.get("core_idea") or item.get("core idea") or "")
@@ -115,6 +112,7 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
                 f"[{i}] 标题: {title}",
                 id_line,
                 f"类型/状态: {mem_type}" if mem_type else "",
+                f"质量状态: {lifecycle}",
                 f"目标: {goal}" if goal else "",
                 f"核心思路/避坑指南: {core_preview}" if core_preview else "核心思路/避坑指南: (empty)",
                 f"要点/约束: {req_preview}" if req_preview else "",
@@ -130,6 +128,7 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
                 f"[{i}] {title}",
                 id_line,
                 f"    描述: {desc}" if desc else "",
+                f"    质量状态: {lifecycle}",
                 f"    parent_ideation_id: {pid}",
                 f"    parent_experiment_id: {peid}",
                 f"    相似度 {pick_similarity(item)}" if pick_similarity(item) else "",
@@ -152,6 +151,7 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
                 f"    效果: {result_s}" if result_s else "",
                 f"    标签: {tags}" if tags else "",
                 f"    验证次数: {verified}" if verified else "",
+                f"    质量状态: {lifecycle}",
                 f"    相似度 {pick_similarity(item)}" if pick_similarity(item) else "",
             ]
             blocks.append("\n".join([x for x in lines if x]))
@@ -171,6 +171,7 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
                 f"[{i}] 实验上下文: {prop_preview}",
                 id_line,
                 f"状态: {mem_status}" if mem_status else "",
+                f"质量状态: {lifecycle}",
                 f"数据策略: {data_preview}" if data_preview else "",
                 f"模型策略: {model_preview}" if model_preview else "",
                 f"环境/约束: {env_preview}" if env_preview else "",
@@ -224,14 +225,6 @@ def search_evomemory(query: str, memory_kind: str) -> str:
         if not results:
             return f"没有搜到与 {q!r} 相关的 {kind} 记忆。你可以换个关键词再试。"
 
-        shown = results[:5]
-        try:
-            from .hub_usage import record_downloads_for_results
-
-            record_downloads_for_results(kind, shown, headers=headers)
-        except Exception:
-            pass
-
         # 保持 Observation 紧凑：最多展示 5 条
         return _format_results(kind, results, max_items=5)
     except Exception as e:
@@ -247,14 +240,31 @@ def apply_evomemory(memory_id: str, retrieval_proof: str) -> str:
     ``search_evomemory`` result. The middleware reports the eventual task
     outcome; this call is only an attribution marker.
     """
-    if not consume_application_proof(memory_id, retrieval_proof):
+    mid = str(memory_id or "").strip().lower()
+    proof = str(retrieval_proof or "").strip()
+    if not mid or not proof:
         return (
-            "Application was not recorded: use a memory_id and HUB_APPLY_PROOF "
-            "returned by search_evomemory in this client."
+            "Application was not recorded: use the memory_id and signed "
+            "HUB_APPLY_PROOF returned by an authenticated search_evomemory call."
         )
+    try:
+        from .agent_tools import headers_or_error
+        from .hub_usage import create_application_by_id
+
+        headers, err = headers_or_error()
+        if not headers:
+            return f"Application was not recorded: {err or 'Hub authentication is required.'}"
+        application = create_application_by_id(mid, proof, headers=headers)
+    except Exception as e:
+        return f"Application was not recorded: Hub application request failed ({type(e).__name__})."
+    if not application:
+        return "Application was not recorded: the Hub rejected or could not verify the retrieval proof."
+    app_id = str(application.get("application_id") or "").strip().lower()
+    if not app_id:
+        return "Application was not recorded: the Hub response did not contain an application id."
     return (
-        "EvoMemory application recorded locally. Now implement and validate the "
-        f"adapted step. [HUB_APPLIED:{str(memory_id).strip().lower()}]"
+        "EvoMemory application recorded by the Hub. Now implement and validate the "
+        f"adapted step. [HUB_APPLIED:{mid}:{app_id}]"
     )
 
 

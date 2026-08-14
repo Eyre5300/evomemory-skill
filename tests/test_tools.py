@@ -11,28 +11,35 @@ import evomemory_sync.tools as tools_module
 
 def test_apply_evomemory_requires_a_search_capability():
     memory_id = "12345678-1234-1234-1234-123456789abc"
-    proof = tools_module.issue_application_proof(memory_id)
-    accepted = tools_module.apply_evomemory.invoke(
-        {"memory_id": memory_id, "retrieval_proof": proof}
-    )
-    rejected = tools_module.apply_evomemory.invoke(
-        {"memory_id": memory_id, "retrieval_proof": "forged"}
-    )
-    assert "recorded locally" in accepted
+    app_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    with mock.patch("evomemory_sync.agent_tools.headers_or_error", return_value=({"Authorization": "Bearer x"}, None)), mock.patch(
+        "evomemory_sync.hub_usage.create_application_by_id",
+        return_value={"application_id": app_id},
+    ):
+        accepted = tools_module.apply_evomemory.invoke(
+            {"memory_id": memory_id, "retrieval_proof": "v1.signed.proof"}
+        )
+    rejected = tools_module.apply_evomemory.invoke({"memory_id": memory_id, "retrieval_proof": ""})
+    assert "recorded by the Hub" in accepted
+    assert f"[HUB_APPLIED:{memory_id}:{app_id}]" in accepted
     assert "not recorded" in rejected
 
 
-def test_apply_evomemory_receipt_cannot_be_replayed():
+def test_apply_evomemory_uses_hub_idempotency_for_retries():
     memory_id = "12345678-1234-1234-1234-123456789abc"
-    proof = tools_module.issue_application_proof(memory_id)
-    first = tools_module.apply_evomemory.invoke(
-        {"memory_id": memory_id, "retrieval_proof": proof}
-    )
-    replay = tools_module.apply_evomemory.invoke(
-        {"memory_id": memory_id, "retrieval_proof": proof}
-    )
-    assert "recorded locally" in first
-    assert "not recorded" in replay
+    app_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    with mock.patch("evomemory_sync.agent_tools.headers_or_error", return_value=({"Authorization": "Bearer x"}, None)), mock.patch(
+        "evomemory_sync.hub_usage.create_application_by_id",
+        return_value={"application_id": app_id},
+    ) as create:
+        first = tools_module.apply_evomemory.invoke(
+            {"memory_id": memory_id, "retrieval_proof": "v1.signed.proof"}
+        )
+        replay = tools_module.apply_evomemory.invoke(
+            {"memory_id": memory_id, "retrieval_proof": "v1.signed.proof"}
+        )
+    assert "recorded by the Hub" in first and "recorded by the Hub" in replay
+    assert create.call_count == 2
 
 
 class TestOptionalAuthHeaders:
@@ -72,6 +79,15 @@ def test_malformed_search_row_is_not_issued_an_application_receipt():
     rendered = tools_module._format_results("workflow", [{"id": "not-a-uuid"}], max_items=1)
     assert "[HUB_REF:not-a-uuid]" in rendered
     assert "HUB_APPLY_PROOF" not in rendered
+
+
+def test_search_renders_only_hub_signed_application_proof():
+    rendered = tools_module._format_results(
+        "workflow",
+        [{"id": "12345678-1234-1234-1234-123456789abc", "hub_retrieval_proof": "v1.payload.signature"}],
+        max_items=1,
+    )
+    assert "[HUB_APPLY_PROOF:v1.payload.signature]" in rendered
 
 
 class TestDefaultTopK:

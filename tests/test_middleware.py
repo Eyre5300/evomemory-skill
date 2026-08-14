@@ -13,7 +13,6 @@ from evomemory_sync.middleware import (
     _resolve_post_run_actions,
 )
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from evomemory_sync.application_proof import issue_application_proof
 
 
 class TestResolvePostRunActions:
@@ -72,10 +71,9 @@ def test_context_treats_retrieval_as_non_application():
 
 def test_context_accepts_only_valid_explicit_application():
     memory_id = "12345678-1234-1234-1234-123456789abc"
-    proof = issue_application_proof(memory_id)
-    from evomemory_sync.tools import apply_evomemory
-
-    output = apply_evomemory.invoke({"memory_id": memory_id, "retrieval_proof": proof})
+    application_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    proof = "v1.payload.signature"
+    output = f"[HUB_APPLIED:{memory_id}:{application_id}]"
     ctx = _build_context(
         {
             "messages": [
@@ -95,6 +93,7 @@ def test_context_accepts_only_valid_explicit_application():
         }
     )
     assert ctx["_hub_references"] == [memory_id]
+    assert ctx["_hub_applications"] == {memory_id: application_id}
 
 
 def test_context_rejects_hallucinated_application_marker():
@@ -141,5 +140,6 @@ def test_adaptation_payload_hmacs_task_and_excludes_trace():
     assert len(payload["task_fingerprint"]) == 64
     assert payload["attribution"] == "explicit_application"
     assert payload["outcome"] == "failure"
+    assert payload["evidence_type"] == "agent_self_check"
     assert payload["failure_type"] == "validation_failed"
     assert payload["tool_calls"] == 3

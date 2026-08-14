@@ -1,4 +1,4 @@
-"""Record Hub memory usage (download counts) when skill retrieves experiences."""
+"""Record trustworthy Hub usage after an Agent explicitly applies an experience."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def _post_record(url: str, headers: dict[str, str] | None = None) -> None:
 
 
 def record_download_by_id(memory_id: str, headers: dict[str, str] | None = None) -> None:
-    """Increment download count via generic Hub endpoint (kind auto-detected)."""
+    """Record one authenticated, idempotent retrieval via the generic Hub endpoint."""
     if not usage_tracking_enabled():
         return
     mid = (memory_id or "").strip()
@@ -56,6 +56,48 @@ def record_download_by_id(memory_id: str, headers: dict[str, str] | None = None)
         return
     base = get_base_url()
     _post_record(f"{base}/memory/{mid}/record-download", headers=headers)
+
+
+def create_application_by_id(
+    memory_id: str,
+    retrieval_proof: str,
+    headers: dict[str, str] | None = None,
+) -> dict[str, Any] | None:
+    """Exchange a Hub-signed search proof for one server application id.
+
+    The same proof is idempotent on the Hub. Creating the application also
+    records the account's revision-scoped retrieval, so callers must not send a
+    separate record-download request.
+    """
+    mid = (memory_id or "").strip()
+    proof = (retrieval_proof or "").strip()
+    if not mid or not proof:
+        return None
+    req_headers = {
+        "User-Agent": BROWSER_UA,
+        "Accept": DEFAULT_ACCEPT,
+        "Accept-Language": DEFAULT_ACCEPT_LANGUAGE,
+        "Content-Type": "application/json",
+    }
+    if headers:
+        req_headers.update(headers)
+    timeout = float(_env("EVOMEMORY_API_TIMEOUT_SECONDS", "15") or "15")
+    try:
+        r = requests.post(
+            f"{get_base_url()}/memory/{mid}/applications",
+            json={"retrieval_proof": proof},
+            headers=req_headers,
+            timeout=timeout,
+            verify=tls_verify(),
+        )
+        if r.status_code >= 400:
+            logger.debug("create-application %s -> HTTP %s", mid, r.status_code)
+            return None
+        data = r.json()
+        return data if data.get("application_id") else None
+    except Exception as e:
+        logger.debug("create-application failed %s: %s", mid, e)
+        return None
 
 
 def record_adaptation_by_id(
@@ -103,17 +145,9 @@ def record_downloads_for_results(
     *,
     headers: dict[str, str] | None = None,
 ) -> None:
-    """After semantic search returns memories to an agent, count each as one download/use."""
-    if not usage_tracking_enabled():
-        return
-    kind = (memory_kind or "").strip().lower()
-    if kind not in {"ideation", "experiment", "workflow", "recipe"}:
-        return
-    base = get_base_url()
-    seen: set[str] = set()
-    for item in results:
-        mid = str(item.get("id") or item.get("memory_id") or "").strip()
-        if not mid or mid in seen:
-            continue
-        seen.add(mid)
-        _post_record(f"{base}/memory/{kind}/{mid}/record-download", headers=headers)
+    """Deprecated compatibility shim: seeing a search result is never a retrieval.
+
+    New code must create a server-side application from the signed Hub proof;
+    that endpoint records the trusted retrieval atomically with attribution.
+    """
+    return None

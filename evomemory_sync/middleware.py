@@ -189,14 +189,14 @@ def _extract_hub_references(messages: list[BaseMessage]) -> set[str]:
     return refs
 
 
-def _extract_applied_hub_references(messages: list[BaseMessage]) -> set[str]:
+def _extract_applied_hub_applications(messages: list[BaseMessage]) -> dict[str, str]:
     """Return results explicitly applied through the local tool capability.
 
     Free-form ``[HUB_APPLIED:...]`` text is ignored because it can be
     hallucinated. ``apply_evomemory`` consumes a process-local receipt, so the
     middleware trusts its tool result marker rather than the model's arguments.
     """
-    refs: set[str] = set()
+    applications: dict[str, str] = {}
     for msg in messages:
         if not isinstance(msg, AIMessage):
             continue
@@ -211,11 +211,20 @@ def _extract_applied_hub_references(messages: list[BaseMessage]) -> set[str]:
                 if not isinstance(result, ToolMessage) or str(getattr(result, "tool_call_id", "")) != call_id:
                     continue
                 text = _text_content(result)
-                match = re.search(r"\[HUB_APPLIED:([a-f0-9\-]{36})\]", text, re.IGNORECASE)
+                match = re.search(
+                    r"\[HUB_APPLIED:([a-f0-9\-]{36}):([a-f0-9\-]{36})\]",
+                    text,
+                    re.IGNORECASE,
+                )
                 if match:
-                    refs.add(match.group(1).lower())
+                    applications[match.group(1).lower()] = match.group(2).lower()
                 break
-    return refs
+    return applications
+
+
+def _extract_applied_hub_references(messages: list[BaseMessage]) -> set[str]:
+    """Compatibility helper returning only IDs from trusted application markers."""
+    return set(_extract_applied_hub_applications(messages))
 
 
 def _build_context(state: AgentState) -> dict[str, Any]:
@@ -223,7 +232,8 @@ def _build_context(state: AgentState) -> dict[str, Any]:
     task = _first_human_task(messages)
     code, errors, has_err = _collect_tool_code_and_errors(messages)
     retrieved_hub_refs = _extract_hub_references(messages)
-    applied_hub_refs = _extract_applied_hub_references(messages)
+    applied_hub_applications = _extract_applied_hub_applications(messages)
+    applied_hub_refs = set(applied_hub_applications)
     outcome = assess_run_outcome(messages, task=task)
     raw: dict[str, Any] = {
         "task_description": task,
@@ -237,8 +247,9 @@ def _build_context(state: AgentState) -> dict[str, Any]:
         "last_tool_messages": _last_tool_messages(messages),
         # This legacy worker/curator key now means "applied", not merely
         # "present in a search result". Keep retrievals separately for metrics.
-        "_hub_references": list(applied_hub_refs) if applied_hub_refs else [],
-        "_retrieved_hub_references": list(retrieved_hub_refs) if retrieved_hub_refs else [],
+        "_hub_references": sorted(applied_hub_refs) if applied_hub_refs else [],
+        "_hub_applications": applied_hub_applications,
+        "_retrieved_hub_references": sorted(retrieved_hub_refs) if retrieved_hub_refs else [],
         "_tool_call_count": sum(
             len(getattr(msg, "tool_calls", None) or []) for msg in messages if isinstance(msg, AIMessage)
         ),
@@ -291,6 +302,11 @@ def _adaptation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
         "attribution": "explicit_application",
         "outcome": "success" if success else "failure",
         "validation_status": str(ctx.get("validation_status") or "not_applicable"),
+        "evidence_type": (
+            "agent_self_check"
+            if str(ctx.get("validation_status") or "not_applicable") in {"passed", "failed"}
+            else "not_applicable"
+        ),
         "validation_reason": str(ctx.get("validation_reason") or "")[:500],
         "agent_profile": profile,
         "tool_calls": max(0, int(ctx.get("_tool_call_count") or 0)),
@@ -377,12 +393,18 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
         headers = self._hub_headers_or_none()
         if not headers:
             return
-        payload = _adaptation_payload(ctx)
+        base_payload = _adaptation_payload(ctx)
+        applications = ctx.get("_hub_applications") or {}
         for ref_id in hub_ref_ids:
             if not re.match(r"^[0-9a-f\-]{36}$", ref_id, re.IGNORECASE):
                 logger.warning("skipping invalid hub ref_id: %s", ref_id)
                 continue
+            application_id = str(applications.get(ref_id) or "").strip()
+            if not re.match(r"^[0-9a-f\-]{36}$", application_id, re.IGNORECASE):
+                logger.warning("skipping adaptation without Hub application id: %s", ref_id)
+                continue
             try:
+                payload = {**base_payload, "application_id": application_id}
                 record_adaptation_by_id(ref_id, payload, headers=headers)
             except Exception as e:
                 logger.debug("evomemory_sync: adaptation %s failed: %s", ref_id, e)
