@@ -47,6 +47,7 @@ Actions (choose exactly one):
 Output schema:
 {
   "action": "create" | "update" | "skip",
+  "skip_category": "duplicate" | "low_quality" | null,
   "update_memory_id": "<uuid or null>",
   "reason": "one short sentence",
   "refined": { ...same memory_type fields as draft, improved text... }
@@ -57,6 +58,7 @@ Rules:
 - For recipe, **problem** / **solution** / **env_snapshot** MUST be **complete prose strings** (not nested objects). Each paragraph must semantically cover the usual dimensions (task type, domain, constraints, state; method, parameters, rationale; creator, deps, environment) in natural language — you write the full text; upload layer does not stitch fields.
 - On **update**, update_memory_id MUST equal similar_own_top1.id when provided.
 - On **skip**, still include "reason"; "refined" may be omitted.
+- On **skip**, set skip_category to "duplicate" only when a supplied similar card already covers it; otherwise use "low_quality".
 - On **create** or **update**, "refined" MUST keep the same memory_type and include all required fields for that type.
 - Make text **more specific** (versions, commands, metrics). Remove fluff. Do not invent facts absent from the draft/trace.
 - If others' cards already solve the same problem and the user has nothing new, choose **skip**.
@@ -116,6 +118,23 @@ def _curator_update_min_similarity() -> float:
         return max(0.0, min(1.0, float(raw)))
     except (TypeError, ValueError):
         return 0.82
+
+
+def _curator_skip_duplicate_min_similarity() -> float:
+    raw = _env(
+        "EVOMEMORY_CURATOR_SKIP_DUPLICATE_MIN_SIMILARITY",
+        _env("EVOMEMORY_UPLOAD_SKIP_SIMILARITY", "0.90"),
+    )
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except (TypeError, ValueError):
+        return 0.90
+
+
+def _best_similar_similarity(similar_ctx: dict[str, Any]) -> float:
+    candidates = [similar_ctx.get("similar_own_top1")]
+    candidates.extend(similar_ctx.get("similar_others_top3") or [])
+    return max((_similarity(item) for item in candidates if item), default=0.0)
 
 
 def _compact_similar(item: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -249,6 +268,26 @@ def _validate_decision(
     own_ids = {x for x in (similar_ctx.get("own_ids") or []) if x}
 
     if action == "skip":
+        category = str(raw.get("skip_category") or "").strip().lower()
+        reason_lower = reason.lower()
+        duplicate_claim = category == "duplicate" or (
+            not category
+            and any(word in reason_lower for word in ("duplicate", "same", "already", "covered", "overlap"))
+        )
+        best_similarity = _best_similar_similarity(similar_ctx)
+        min_similarity = _curator_skip_duplicate_min_similarity()
+        if duplicate_claim and best_similarity < min_similarity:
+            logger.warning(
+                "curator duplicate skip forced to create: best similarity %.3f below hard gate %.3f",
+                best_similarity,
+                min_similarity,
+            )
+            return CuratorDecision(
+                action="create",
+                reason=f"duplicate skip rejected below similarity gate ({best_similarity:.3f} < {min_similarity:.3f})",
+                update_memory_id=None,
+                refined=normalize_llm_extraction(dict(draft)),
+            )
         return CuratorDecision(action="skip", reason=reason, update_memory_id=None, refined=None)
 
     refined = raw.get("refined")

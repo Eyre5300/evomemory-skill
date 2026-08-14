@@ -33,8 +33,37 @@ _validate_decision = _curator._validate_decision
 
 def test_validate_skip():
     d = _validate_decision(
-        {"action": "skip", "reason": "duplicate"},
-        similar_ctx={"own_ids": []},
+        {"action": "skip", "skip_category": "duplicate", "reason": "duplicate"},
+        similar_ctx={"own_ids": [], "similar_others_top3": [{"id": "x", "similarity": 0.95}]},
+        draft={"memory_type": "recipe"},
+    )
+    assert d is not None
+    assert d.action == "skip"
+
+
+def test_duplicate_skip_below_similarity_gate_forces_create(monkeypatch):
+    monkeypatch.setenv("EVOMEMORY_CURATOR_SKIP_DUPLICATE_MIN_SIMILARITY", "0.90")
+    draft = {
+        "memory_type": "recipe",
+        "trigger": "MBPP task 98",
+        "problem": "multiply then average",
+        "solution": "product divided by length",
+    }
+    d = _validate_decision(
+        {"action": "skip", "skip_category": "duplicate", "reason": "already covered"},
+        similar_ctx={"own_ids": ["x"], "similar_own_top1": {"id": "x", "similarity": 0.706}},
+        draft=draft,
+    )
+    assert d is not None
+    assert d.action == "create"
+    assert d.refined["problem"] == draft["problem"]
+
+
+def test_low_quality_skip_is_not_overridden(monkeypatch):
+    monkeypatch.setenv("EVOMEMORY_CURATOR_SKIP_DUPLICATE_MIN_SIMILARITY", "0.90")
+    d = _validate_decision(
+        {"action": "skip", "skip_category": "low_quality", "reason": "draft lacks a usable method"},
+        similar_ctx={"own_ids": [], "similar_others_top3": []},
         draft={"memory_type": "recipe"},
     )
     assert d is not None
