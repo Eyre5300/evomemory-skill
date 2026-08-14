@@ -70,6 +70,7 @@ python scripts/setup.py wizard
 | `EVOMEMORY_UPLOAD_AGENT_CURATE` | No | `true` | Before upload: LLM searches similar memories, decides **create / update / skip**, and **refines** draft text |
 | `EVOMEMORY_CURATOR_MODEL` | No | same as `EVOMEMORY_EXTRACTOR_MODEL` | Model for upload curator (OpenAI-compatible chat) |
 | `EVOMEMORY_CURATOR_TIMEOUT_SECONDS` | No | same as extractor | HTTP timeout for curator LLM call |
+| `EVOMEMORY_CURATOR_UPDATE_MIN_SIMILARITY` | No | same as `EVOMEMORY_UPLOAD_UPDATE_SIMILARITY` (`0.82`) | Hard safety gate: an LLM-proposed update below this own-card similarity is forced to a clean create, preventing unrelated experiences from overwriting each other |
 | `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` | No | `true` | When `search_evomemory` returns results, POST `record-download` so web download counts increment |
 | `EVOMEMORY_RECORD_ADAPTATION_ON_USE` | No | `true` | When a cited Hub memory is used, send a privacy-minimized outcome event: local-keyed task HMAC-SHA256, success/failure, validation status, and non-secret Agent profile. No task text or trace is sent. |
 | `EVOMEMORY_OUTCOME_QUEUE_PATH` | No | `~/.evomemory/outcomes.sqlite3` | Durable SQLite queue for privacy-minimized outcomes. Tokens, raw tasks, prompts, and traces are never stored. |

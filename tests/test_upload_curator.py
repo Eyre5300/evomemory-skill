@@ -55,7 +55,7 @@ def test_validate_update_own_id():
                 "solution": "s",
             },
         },
-        similar_ctx={"own_ids": [own_id], "similar_own_top1": {"id": own_id}},
+        similar_ctx={"own_ids": [own_id], "similar_own_top1": {"id": own_id, "similarity": 0.95}},
         draft={"memory_type": "recipe", "trigger": "t", "problem": "p", "solution": "s"},
     )
     assert d is not None
@@ -78,9 +78,42 @@ def test_validate_update_rejects_foreign_id_uses_own_fallback():
                 "solution": "s",
             },
         },
-        similar_ctx={"own_ids": [own_id], "similar_own_top1": {"id": own_id}},
+        similar_ctx={"own_ids": [own_id], "similar_own_top1": {"id": own_id, "similarity": 0.95}},
         draft={"memory_type": "recipe"},
     )
     assert d is not None
     assert d.action == "update"
     assert d.update_memory_id == own_id
+
+
+def test_validate_update_below_similarity_gate_forces_clean_create(monkeypatch):
+    monkeypatch.setenv("EVOMEMORY_CURATOR_UPDATE_MIN_SIMILARITY", "0.82")
+    own_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    draft = {
+        "memory_type": "recipe",
+        "trigger": "MBPP task 79",
+        "problem": "check odd word length",
+        "solution": "return len(word) % 2 == 1",
+    }
+    d = _validate_decision(
+        {
+            "action": "update",
+            "update_memory_id": own_id,
+            "reason": "merge unrelated cards",
+            "refined": {
+                "memory_type": "recipe",
+                "trigger": "difference of squares plus word length",
+                "problem": "polluted merged problem",
+                "solution": "polluted merged solution",
+            },
+        },
+        similar_ctx={
+            "own_ids": [own_id],
+            "similar_own_top1": {"id": own_id, "similarity": 0.63},
+        },
+        draft=draft,
+    )
+    assert d is not None
+    assert d.action == "create"
+    assert d.update_memory_id is None
+    assert d.refined["problem"] == draft["problem"]

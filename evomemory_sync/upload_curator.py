@@ -106,6 +106,18 @@ def _similarity(item: dict[str, Any] | None) -> float:
         return 0.0
 
 
+def _curator_update_min_similarity() -> float:
+    """Hard gate for LLM-proposed updates, shared with rule-based dedup by default."""
+    raw = _env(
+        "EVOMEMORY_CURATOR_UPDATE_MIN_SIMILARITY",
+        _env("EVOMEMORY_UPLOAD_UPDATE_SIMILARITY", "0.82"),
+    )
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except (TypeError, ValueError):
+        return 0.82
+
+
 def _compact_similar(item: dict[str, Any] | None) -> dict[str, Any] | None:
     if not item:
         return None
@@ -251,8 +263,24 @@ def _validate_decision(
         refined["memory_type"] = mt
 
     if action == "update":
+        own_top = similar_ctx.get("similar_own_top1") or {}
+        own_similarity = _similarity(own_top)
+        min_similarity = _curator_update_min_similarity()
+        if own_similarity < min_similarity:
+            logger.warning(
+                "curator update forced to create: own similarity %.3f below hard gate %.3f",
+                own_similarity,
+                min_similarity,
+            )
+            # The LLM may have already merged unrelated own-card content into
+            # ``refined``. Use the original normalized draft for the new card.
+            return CuratorDecision(
+                action="create",
+                reason=f"update rejected below similarity gate ({own_similarity:.3f} < {min_similarity:.3f})",
+                update_memory_id=None,
+                refined=normalize_llm_extraction(dict(draft)),
+            )
         if not update_id or update_id not in own_ids:
-            own_top = similar_ctx.get("similar_own_top1") or {}
             fallback = str(own_top.get("id") or "").strip()
             if fallback and fallback in own_ids:
                 update_id = fallback
