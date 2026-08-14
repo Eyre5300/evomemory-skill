@@ -2,7 +2,7 @@
 name: evomemory-sync
 description: 将 EvoScientist/Agent 的执行过程自动沉淀到 EvoMemory Hub。包含 LangChain 中间件（run 结束后自动上传）与 CLI 配置/语义检索工具。
 tags: [memory, sharing, collaboration, community, 中文]
-compatibility: Python 3.11+；需要可访问 Hub（注册/登录）与可选的 OpenAI 兼容 Chat API（Extractor/Curator）。
+compatibility: Python 3.10+；需要可访问 Hub（注册/登录）与可选的 OpenAI 兼容 Chat API（Extractor/Curator）。
 ---
 
 # EvoMemory Sync Skill（中文说明）
