@@ -72,6 +72,8 @@ python scripts/setup.py wizard
 | `EVOMEMORY_CURATOR_TIMEOUT_SECONDS` | No | same as extractor | HTTP timeout for curator LLM call |
 | `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` | No | `true` | When `search_evomemory` returns results, POST `record-download` so web download counts increment |
 | `EVOMEMORY_RECORD_ADAPTATION_ON_USE` | No | `true` | When a cited Hub memory is used, send a privacy-minimized outcome event: local-keyed task HMAC-SHA256, success/failure, validation status, and non-secret Agent profile. No task text or trace is sent. |
+| `EVOMEMORY_OUTCOME_QUEUE_PATH` | No | `~/.evomemory/outcomes.sqlite3` | Durable SQLite queue for privacy-minimized outcomes. Tokens, raw tasks, prompts, and traces are never stored. |
+| `EVOMEMORY_OUTCOME_QUEUE_MAX` | No | `50000` | Maximum pending outcome rows; protects the local disk from unbounded growth. |
 | `EVOMEMORY_ADAPTATION_FINGERPRINT_KEY` | No | generated once in root `.env` | Per-installation secret used to HMAC task fingerprints. Keep it private; it supports local repeat-task deduplication, not cross-user task matching. |
 | `EVOMEMORY_HUB_RESOLVE_CACHE_TTL_SECONDS` | No | `3600` | How long `resolve_working_hub_base_url_cached` keeps a probe result (long-running agents can pick up Hub URL changes without restart) |
 | `EVOMEMORY_HUB_RESOLVE_CACHE_MAX_ENTRIES` | No | `32` | Max cached Hub origins (FIFO eviction) |

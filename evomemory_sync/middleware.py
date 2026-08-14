@@ -387,11 +387,11 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
                 logger.debug("evomemory_sync: record-download %s failed: %s", ref_id, e)
 
     def _send_adaptations(self, hub_ref_ids: list[str], ctx: dict[str, Any]) -> None:
-        """Send one outcome event per cited memory, for every memory kind."""
-        from .hub_usage import record_adaptation_by_id
+        """Persist outcomes first, then make a best-effort delivery pass."""
+        from .hub_usage import adaptation_tracking_enabled
+        from .outcome_queue import enqueue_outcome, flush_pending_outcomes
 
-        headers = self._hub_headers_or_none()
-        if not headers:
+        if not adaptation_tracking_enabled():
             return
         base_payload = _adaptation_payload(ctx)
         applications = ctx.get("_hub_applications") or {}
@@ -405,14 +405,33 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
                 continue
             try:
                 payload = {**base_payload, "application_id": application_id}
-                record_adaptation_by_id(ref_id, payload, headers=headers)
+                if not enqueue_outcome(ref_id, payload):
+                    logger.error("evomemory_sync: outcome queue full for %s", ref_id)
             except Exception as e:
-                logger.debug("evomemory_sync: adaptation %s failed: %s", ref_id, e)
+                logger.warning("evomemory_sync: could not queue adaptation %s: %s", ref_id, e)
+        headers = self._hub_headers_or_none()
+        if headers:
+            flush_pending_outcomes(headers)
+
+    def _flush_pending_adaptations(self) -> None:
+        """Retry durable outcomes even when the current run applies no memory."""
+        from .hub_usage import adaptation_tracking_enabled
+        from .outcome_queue import flush_pending_outcomes
+
+        if not adaptation_tracking_enabled():
+            return
+        headers = self._hub_headers_or_none()
+        if headers:
+            flush_pending_outcomes(headers)
 
     def _finalize(self, state: AgentState, runtime: Runtime) -> None:
         _maybe_load_dotenv()
         if not self._is_enabled():
             return
+        try:
+            self._flush_pending_adaptations()
+        except Exception:
+            logger.debug("evomemory_sync: pending outcome flush failed", exc_info=True)
         messages = list(state.get("messages") or [])
         if len(messages) < 2:
             return

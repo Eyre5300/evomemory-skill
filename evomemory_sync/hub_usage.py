@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 import requests
 
@@ -104,7 +104,7 @@ def record_adaptation_by_id(
     memory_id: str,
     payload: dict[str, Any],
     headers: dict[str, str] | None = None,
-) -> None:
+) -> Literal["sent", "retry", "discard"]:
     """Record a privacy-minimized outcome for a referenced Hub memory.
 
     ``payload`` is deliberately constructed by middleware from a task hash and
@@ -112,10 +112,10 @@ def record_adaptation_by_id(
     output without a separate privacy review.
     """
     if not adaptation_tracking_enabled():
-        return
+        return "discard"
     mid = (memory_id or "").strip()
     if not mid:
-        return
+        return "discard"
     req_headers = {
         "User-Agent": BROWSER_UA,
         "Accept": DEFAULT_ACCEPT,
@@ -133,10 +133,15 @@ def record_adaptation_by_id(
             timeout=timeout,
             verify=tls_verify(),
         )
-        if r.status_code >= 400:
-            logger.debug("record-adaptation %s -> HTTP %s", mid, r.status_code)
+        if 200 <= r.status_code < 300:
+            return "sent"
+        logger.debug("record-adaptation %s -> HTTP %s", mid, r.status_code)
+        if r.status_code in {401, 403, 408, 425, 429} or r.status_code >= 500:
+            return "retry"
+        return "discard"
     except Exception as e:
         logger.debug("record-adaptation failed %s: %s", mid, e)
+        return "retry"
 
 
 def record_downloads_for_results(
