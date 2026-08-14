@@ -291,10 +291,8 @@ def json_to_recipe_payload(data: dict[str, Any]) -> dict[str, Any]:
     pe = data.get("parent_experiment_id") or data.get("parent_experiment")
     if pe is not None and str(pe).strip():
         out["parent_experiment_id"] = str(pe).strip()
-    # Hub references (for verification flow)
-    hub_refs = data.get("_hub_references")
-    if hub_refs:
-        out["_hub_references"] = hub_refs
+    # Internal attribution metadata is intentionally not part of the Hub REST
+    # body. Application-bound outcomes carry trusted usage evidence separately.
     return out
 
 

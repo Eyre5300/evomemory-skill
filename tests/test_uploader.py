@@ -123,3 +123,16 @@ class TestJsonToRecipePayload:
             assert False, "Should have raised ValueError"
         except ValueError:
             pass
+
+    def test_internal_hub_references_never_enter_rest_payload(self):
+        result = json_to_recipe_payload(
+            {
+                "memory_type": "recipe",
+                "trigger": "A concrete trigger long enough",
+                "problem": "A concrete problem description long enough",
+                "solution": "A concrete validated solution long enough",
+                "env_snapshot": "Python 3.10 on Linux with no extra dependencies",
+                "_hub_references": ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+            }
+        )
+        assert "_hub_references" not in result

@@ -20,6 +20,15 @@ from .uploader import upload_memory_record
 logger = logging.getLogger("evomemory_sync.worker")
 
 
+def _record_allowed_for_outcome(ctx: dict, record: dict) -> bool:
+    """Never publish an unvalidated success-shaped memory from a failed run."""
+    if bool(ctx.get("run_success_flag", False)):
+        return True
+    memory_type = str(record.get("memory_type") or "").strip().lower()
+    status = str(record.get("status") or "").strip().lower()
+    return memory_type == "ideation" and status == "failed"
+
+
 def _default_worker_log_path() -> Path:
     custom = os.getenv("EVOMEMORY_WORKER_LOG_FILE", "").strip()
     if custom:
@@ -69,6 +78,14 @@ def main() -> int:
         record = normalize_llm_extraction(record)
         if record.get("skip") is True:
             logger.info("offline worker skip ctx_hash=%s", ctx_hash)
+            return 0
+        if not _record_allowed_for_outcome(ctx, record):
+            logger.info(
+                "offline worker skip_unvalidated_failure ctx_hash=%s memory_type=%s status=%s",
+                ctx_hash,
+                record.get("memory_type"),
+                record.get("status"),
+            )
             return 0
 
         hub_refs = ctx.get("_hub_references")
