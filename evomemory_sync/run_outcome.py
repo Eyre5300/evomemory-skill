@@ -49,6 +49,19 @@ _RUNTIME_FAIL_HEAD_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
+_EXECUTION_TOOL_NAMES = frozenset({"execute", "shell", "bash", "run_python", "python"})
+_NON_EXECUTION_TOOL_NAMES = frozenset(
+    {
+        "search_evomemory",
+        "apply_evomemory",
+        "delete_evomemory",
+        "list_my_evomemory",
+        "share_recipe",
+        "share_workflow",
+        "share_successful_experiment",
+        "share_failed_ideation",
+    }
+)
 
 
 def _text_content(msg: BaseMessage) -> str:
@@ -114,13 +127,20 @@ def _has_code_runtime_error(msg: ToolMessage) -> bool:
     return False
 
 
+def _is_execution_tool_message(msg: ToolMessage) -> bool:
+    name = str(getattr(msg, "name", "") or "")
+    if name in _EXECUTION_TOOL_NAMES:
+        return True
+    if name in _NON_EXECUTION_TOOL_NAMES:
+        return False
+    return bool(_EXIT_CODE_RE.search(_text_content(msg)))
+
+
 def _execution_tool_bodies(messages: list[BaseMessage]) -> list[str]:
     bodies: list[str] = []
     for tm in _tool_messages(messages):
-        name = str(getattr(tm, "name", "") or "")
-        body = _text_content(tm)
-        if name in {"execute", "shell", "bash", "run_python", "python"} or _EXIT_CODE_RE.search(body):
-            bodies.append(body)
+        if _is_execution_tool_message(tm):
+            bodies.append(_text_content(tm))
     if not bodies:
         for tm in _tool_messages(messages):
             bodies.append(_text_content(tm))
@@ -161,7 +181,9 @@ def assess_run_outcome(messages: list[BaseMessage], *, task: str = "") -> dict[s
     """
     tool_msgs = _tool_messages(messages)
     has_tool_error = any(_has_tool_invocation_error(m) for m in tool_msgs)
-    has_code_runtime_error = any(_has_code_runtime_error(m) for m in tool_msgs)
+    has_code_runtime_error = any(
+        _has_code_runtime_error(m) for m in tool_msgs if _is_execution_tool_message(m)
+    )
     validation = _assess_validation(task, messages)
     val_status: ValidationStatus = validation["status"]
 

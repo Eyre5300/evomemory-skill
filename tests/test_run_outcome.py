@@ -62,3 +62,34 @@ def test_pass_pytest_self_check():
     out = assess_run_outcome(msgs, task="run pytest self-check")
     assert out["validation_status"] == "passed"
     assert out["run_success_flag"] is True
+
+
+def test_search_memory_failure_text_does_not_poison_successful_execution():
+    msgs = [
+        HumanMessage(content="search experience, then validate with hidden tests"),
+        ToolMessage(
+            content=(
+                "Found recipe: an old attempt said FAILED and Exit code: 1. "
+                "This is retrieved memory text, not the current execution."
+            ),
+            tool_call_id="search-1",
+            name="search_evomemory",
+            status="success",
+        ),
+        ToolMessage(
+            content="Application recorded. Now implement and validate.",
+            tool_call_id="apply-1",
+            name="apply_evomemory",
+            status="success",
+        ),
+        ToolMessage(
+            content="[OK] all tests passed. Exit code: 0",
+            tool_call_id="run-1",
+            name="run_python",
+            status="success",
+        ),
+    ]
+    out = assess_run_outcome(msgs, task="search experience, then validate with hidden tests")
+    assert out["has_code_runtime_error_flag"] is False
+    assert out["validation_status"] == "passed"
+    assert out["run_success_flag"] is True
