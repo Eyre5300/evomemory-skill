@@ -106,7 +106,7 @@ def test_benchmark_only_trigger_falls_back_to_problem_semantics():
             "solution": "Reverse the decimal digits and compare n + 1 with 2 * reversed_n.",
         }
     )
-    assert result["trigger"] == "check whether an integer is one less than twice its decimal reverse."
+    assert result["trigger"] == "check whether an integer is one less than twice its decimal reverse"
     assert "MBPP" not in result["trigger"]
     assert "56" not in result["trigger"]
 
@@ -134,3 +134,11 @@ def test_normal_semantic_trigger_is_preserved():
         "A Flask service fails during startup.",
     )
     assert title == "Flask 500 on boot after extension upgrade"
+
+
+def test_benchmark_prefix_and_command_style_become_capability_title():
+    title = transferable_recipe_title(
+        "MBPP task_id=59. Write a function to find the nth octagonal number.",
+        "Compute an octagonal figurate number from its one-based index.",
+    )
+    assert title == "find the nth octagonal number"

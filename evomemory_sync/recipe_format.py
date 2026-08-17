@@ -46,7 +46,7 @@ def _strip_evaluation_identity(text: str) -> str:
     cleaned = _BENCHMARK_NAME_RE.sub(" ", str(text or ""))
     cleaned = _BENCHMARK_ID_RE.sub(" ", cleaned)
     cleaned = re.sub(r"(?i)\b(?:task|problem|case|benchmark|test)\b\s*[:=#/-]?\s*$", " ", cleaned)
-    cleaned = re.sub(r"[\s:：#=/|_-]+", " ", cleaned).strip(" \t\r\n-–—:：,，;；|#")
+    cleaned = re.sub(r"[\s:：#=/|_-]+", " ", cleaned).strip(" \t\r\n-–—:：,，;；.|#")
     return cleaned
 
 
@@ -58,12 +58,13 @@ def transferable_recipe_title(trigger: str, problem: str, *, max_length: int = 1
     problem paragraph rather than publishing an empty or benchmark-specific key.
     """
     title = _strip_evaluation_identity(trigger)
+    title = _GENERIC_PROBLEM_LEAD_RE.sub("", title)
     if len(re.sub(r"\W", "", title, flags=re.UNICODE)) < 4:
         fallback = re.split(r"[\r\n。！？!?]", str(problem or ""), maxsplit=1)[0]
         fallback = _GENERIC_PROBLEM_LEAD_RE.sub("", fallback.strip())
         title = _strip_evaluation_identity(fallback)
     title = re.sub(r"\s+", " ", title).strip()
-    return title[:max_length].rstrip() or "可复用问题解决经验"
+    return title[:max_length].rstrip(" .。") or "可复用问题解决经验"
 
 
 def default_agent_creator(metadata: dict[str, Any] | None = None) -> str:
