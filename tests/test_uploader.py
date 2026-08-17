@@ -113,7 +113,7 @@ class TestJsonToRecipePayload:
     def test_defaults_for_missing(self):
         data = {"memory_type": "recipe"}
         result = json_to_recipe_payload(data)
-        assert result["trigger"] == "(unknown trigger)"
+        assert result["trigger"] == "可复用问题解决经验"
         assert result["problem"] == "(unknown problem)"
         assert result["solution"] == "(unknown solution)"
 

@@ -65,6 +65,8 @@ E) Workflow — reusable prompts + tool wiring (rare). Keys:
 
 F) Recipe — lightweight atomic experience card (PREFERRED for most agent traces). Use when the trace contains a concrete problem-solution pair that other agents can directly reuse.
 
+``trigger`` is the public recipe title. Write a short, transferable semantic title that states the underlying problem or capability, normally as “object + operation + key constraint”. It MUST stand on its own outside the originating run. NEVER include benchmark/dataset names, task IDs, problem numbers, case/sample IDs, run IDs, filenames used only by a test harness, or labels such as MBPP, HumanEval, LiveCodeBench, ``task_id=56``, ``problem 12`` or “第 56 题”. Do not copy an evaluation label and do not title a card “solve this task”. For example, use “判断整数是否比其十进制反转值的两倍少一”, not “MBPP task_id=56”. Abstract identity away while preserving the actual goal and decisive constraint.
+
 **Write three paragraphs yourself** (strings, NOT nested objects). Each must be one coherent piece of text that **semantically covers** the dimensions below — weave them into natural sentences; never emit field names or fill-in-the-blank fragments.
 
 problem (string) — must cover in prose:
@@ -90,6 +92,7 @@ Full recipe keys:
 {"memory_type":"recipe","trigger":"","problem":"","solution":"","env_snapshot":"","result":"","tags":"","parent_ideation_id":null,"parent_experiment_id":null}
 
 Rules: Prefer **recipe** when the trace has a clear trigger→solution pattern. Prefer failed ideation only for complex multi-step failures. Prefer experiment only on clear success with full metrics. parent_* fields are optional — fill only when a Hub UUID is explicitly referenced in the trace (e.g. "based on ideation abc-123" or "from experiment def-456").
+Evaluation provenance is not reusable knowledge: omit benchmark/dataset names and case identifiers from ``trigger``, ``problem``, ``solution``, ``result`` and ``tags`` unless the experience is specifically about operating that benchmark infrastructure rather than solving one of its cases.
 
 Examples (shape only; redact real secrets in your output):
 {"memory_type":"recipe","trigger":"pytorch OOM during 7B fine-tuning","problem":"在单卡 24GB 的 Python 深度学习训练场景里做代码调试：只能用 execute 调参，batch_size=64 时第一步 forward 就 OOM，尚未完成任何有效 checkpoint。","solution":"开启 gradient_checkpointing，并把 batch_size 降到 32、打开 fp16。这样选是因为 OOM 来自激活峰值，checkpointing 用算力换显存，减半 batch 直接压低峰值。","env_snapshot":"由 Qwen2.5-72B + evo-run-abc 总结；依赖 transformers==4.40.0 与 torch==2.3.0，通过 execute 执行命令，运行在 CUDA 12.1 的 RTX 3090 24GB 上。","result":"training succeeded, VRAM 24.1GB→18.3GB, speed -15%","tags":"pytorch,OOM,fine-tuning","parent_ideation_id":null,"parent_experiment_id":null}

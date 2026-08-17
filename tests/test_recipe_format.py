@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from evomemory_sync.recipe_format import (
     format_env_snapshot_section,
     prepare_recipe_hub_fields,
+    transferable_recipe_title,
 )
 from evomemory_sync.extraction_fields import normalize_llm_extraction
 from evomemory_sync.uploader import json_to_recipe_payload
@@ -94,3 +95,42 @@ def test_legacy_free_text_still_works():
     result = json_to_recipe_payload(data)
     assert result["problem"] == "plain problem text"
     assert result["solution"] == "plain solution"
+
+
+def test_benchmark_only_trigger_falls_back_to_problem_semantics():
+    result = json_to_recipe_payload(
+        {
+            "memory_type": "recipe",
+            "trigger": "MBPP task_id=56",
+            "problem": "Write a python function to check whether an integer is one less than twice its decimal reverse.",
+            "solution": "Reverse the decimal digits and compare n + 1 with 2 * reversed_n.",
+        }
+    )
+    assert result["trigger"] == "check whether an integer is one less than twice its decimal reverse."
+    assert "MBPP" not in result["trigger"]
+    assert "56" not in result["trigger"]
+
+
+def test_semantic_part_survives_evaluation_marker_removal():
+    title = transferable_recipe_title(
+        "HumanEval problem 12: preserve stable order while removing duplicates",
+        "Sequence deduplication problem.",
+    )
+    assert title == "preserve stable order while removing duplicates"
+
+
+def test_chinese_case_number_is_not_a_recipe_title():
+    title = transferable_recipe_title(
+        "LiveCodeBench 第 477 题",
+        "将混合大小写字符串统一转换为小写，同时保留数字和标点。",
+    )
+    assert title == "将混合大小写字符串统一转换为小写，同时保留数字和标点"
+    assert "477" not in title
+
+
+def test_normal_semantic_trigger_is_preserved():
+    title = transferable_recipe_title(
+        "Flask 500 on boot after extension upgrade",
+        "A Flask service fails during startup.",
+    )
+    assert title == "Flask 500 on boot after extension upgrade"

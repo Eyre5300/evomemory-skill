@@ -208,6 +208,8 @@ from evomemory_sync.agent_tools import (
 
 Extractor 与 Curator 对 `memory_type: recipe` 产出 **problem / solution / env_snapshot 三段完整自然语言**（字符串，非嵌套 JSON）。各段须在语义上覆盖下列维度，由 **Agent 自己写成连贯的话**，上传层**原样**写入 Hub，不做填空拼接：
 
+`trigger` 是 Hub 展示的 Recipe 标题，必须只概括可迁移的问题语义，建议采用“对象 + 操作 + 关键约束”。不得包含 MBPP、HumanEval、LiveCodeBench 等评测/数据集名称，不得包含 `task_id`、题号、problem/case/sample ID、run ID 或测试夹具文件名。例：写“判断整数是否比其十进制反转值的两倍少一”，不能写“MBPP task_id=56”。上传边界会再次清除此类标识；若标题只剩评测标识，则从 `problem` 段重建语义标题。
+
 | 区块 | 须覆盖的语义维度（写作指引，不出现在正文里） |
 |------|---------------------------------------------|
 | **problem** | 任务类型、领域、约束、初始状态 |

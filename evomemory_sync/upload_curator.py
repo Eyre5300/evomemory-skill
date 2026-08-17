@@ -55,6 +55,7 @@ Output schema:
 
 Rules:
 - Prefer **recipe** shape when memory_type is recipe.
+- For recipe, ``trigger`` is the public title. Rewrite it as a concise semantic description of the underlying problem/capability and decisive constraint. Remove benchmark/dataset names, task/problem/case/sample IDs, run IDs, and test-harness labels (for example MBPP, HumanEval, LiveCodeBench, task_id=56, or 第 56 题). The title must remain useful for a different but structurally similar problem.
 - For recipe, **problem** / **solution** / **env_snapshot** MUST be **complete prose strings** (not nested objects). Each paragraph must semantically cover the usual dimensions (task type, domain, constraints, state; method, parameters, rationale; creator, deps, environment) in natural language — you write the full text; upload layer does not stitch fields.
 - On **update**, update_memory_id MUST equal similar_own_top1.id when provided.
 - On **skip**, still include "reason"; "refined" may be omitted.

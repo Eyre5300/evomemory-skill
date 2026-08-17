@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .env_loader import env as _env
@@ -15,6 +16,54 @@ ENV_SNAPSHOT_DIMENSIONS = ("creator", "software_dependencies", "tool_dependencie
 PROBLEM_KEYS = PROBLEM_DIMENSIONS
 SOLUTION_KEYS = SOLUTION_DIMENSIONS
 ENV_SNAPSHOT_KEYS = ENV_SNAPSHOT_DIMENSIONS
+
+# Evaluation identifiers describe where a problem came from, not when an
+# experience is useful.  They must never become a public recipe title: doing so
+# turns a transferable card into a benchmark lookup key and can leak evaluation
+# identity into retrieval.  This guard also protects manual uploads and curator
+# fallbacks where prompt compliance alone is insufficient.
+_BENCHMARK_NAME_RE = re.compile(
+    r"(?i)\b(?:sanitized[\s_-]*)?(?:mbpp|humaneval|human[\s_-]*eval|"
+    r"livecodebench|live[\s_-]*code[\s_-]*bench|apps|codecontests|"
+    r"swe[\s_-]*bench|bigcodebench|ds[\s_-]*1000)\b"
+)
+_BENCHMARK_ID_RE = re.compile(
+    r"(?ix)"
+    r"(?:\b(?:benchmark|test|eval)?[\s_-]*"
+    r"(?:task|problem|case|sample|item)[\s_-]*(?:id)?\s*[:=#/-]?\s*[a-z]*\d+[a-z0-9_.-]*\b)"
+    r"|(?:\b(?:task|problem|case|sample|item)[\s_-]*id\s*[:=#/-]?\s*[a-z0-9_.-]+\b)"
+    r"|(?:\b(?:题号|任务编号|问题编号|样例编号)\s*[:=#：-]?\s*[a-z0-9_.-]+\b)"
+    r"|(?:第\s*\d+\s*题)"
+)
+_GENERIC_PROBLEM_LEAD_RE = re.compile(
+    r"(?i)^(?:please\s+)?(?:write|implement|create|build)\s+"
+    r"(?:a\s+)?(?:python\s+)?(?:function|method|program)\s+to\s+"
+)
+
+
+def _strip_evaluation_identity(text: str) -> str:
+    """Remove benchmark names and case identifiers without rewriting semantics."""
+    cleaned = _BENCHMARK_NAME_RE.sub(" ", str(text or ""))
+    cleaned = _BENCHMARK_ID_RE.sub(" ", cleaned)
+    cleaned = re.sub(r"(?i)\b(?:task|problem|case|benchmark|test)\b\s*[:=#/-]?\s*$", " ", cleaned)
+    cleaned = re.sub(r"[\s:：#=/|_-]+", " ", cleaned).strip(" \t\r\n-–—:：,，;；|#")
+    return cleaned
+
+
+def transferable_recipe_title(trigger: str, problem: str, *, max_length: int = 160) -> str:
+    """Return a semantic recipe title with evaluation identity removed.
+
+    Prefer the model-authored trigger when it contains actual problem semantics.
+    If it consisted only of a benchmark/case marker, recover a title from the
+    problem paragraph rather than publishing an empty or benchmark-specific key.
+    """
+    title = _strip_evaluation_identity(trigger)
+    if len(re.sub(r"\W", "", title, flags=re.UNICODE)) < 4:
+        fallback = re.split(r"[\r\n。！？!?]", str(problem or ""), maxsplit=1)[0]
+        fallback = _GENERIC_PROBLEM_LEAD_RE.sub("", fallback.strip())
+        title = _strip_evaluation_identity(fallback)
+    title = re.sub(r"\s+", " ", title).strip()
+    return title[:max_length].rstrip() or "可复用问题解决经验"
 
 
 def default_agent_creator(metadata: dict[str, Any] | None = None) -> str:
@@ -77,8 +126,8 @@ def format_env_snapshot_section(data: dict[str, Any]) -> str:
 
 def prepare_recipe_hub_fields(data: dict[str, Any]) -> dict[str, str]:
     """Map extractor/curator recipe JSON to Hub POST body text fields."""
-    trigger = str(data.get("trigger") or "").strip()
     problem = format_problem_section(data)
+    trigger = transferable_recipe_title(str(data.get("trigger") or ""), problem)
     solution = format_solution_section(data)
     env_snap = format_env_snapshot_section(data)
     result = str(data.get("result") or "").strip()
