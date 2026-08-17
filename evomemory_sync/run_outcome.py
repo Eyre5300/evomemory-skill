@@ -58,6 +58,8 @@ _NON_EXECUTION_TOOL_NAMES = frozenset(
         "list_my_evomemory",
         "share_recipe",
         "share_workflow",
+        "share_ideation",
+        "share_experiment",
         "share_successful_experiment",
         "share_failed_ideation",
     }

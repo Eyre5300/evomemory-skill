@@ -5,7 +5,10 @@ from .agent_tools import (
     headers_or_error,
     patch_experiment_parent_link,
     patch_workflow_parent_links,
+    share_experiment,
     share_failed_ideation,
+    share_ideation,
+    share_recipe,
     share_successful_experiment,
     share_workflow,
 )
@@ -35,7 +38,10 @@ __all__ = [
     "export_and_upload_workflow",
     "patch_experiment_parent_link",
     "patch_workflow_parent_links",
+    "share_experiment",
     "share_failed_ideation",
+    "share_ideation",
+    "share_recipe",
     "share_successful_experiment",
     "share_workflow",
 ]

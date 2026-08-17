@@ -52,7 +52,9 @@ def build_search_query(mem_type: str, payload: dict[str, Any]) -> str:
             payload.get("goal"),
             payload.get("title"),
             payload.get("core_idea"),
+            payload.get("rationale"),
             payload.get("requirements"),
+            payload.get("validation_plan"),
         ]
     elif t == "experiment":
         parts = [
@@ -60,6 +62,8 @@ def build_search_query(mem_type: str, payload: dict[str, Any]) -> str:
             payload.get("data_strategy"),
             payload.get("model_strategy"),
             payload.get("environment"),
+            payload.get("result_summary"),
+            payload.get("conclusion"),
         ]
     elif t == "workflow":
         parts = [

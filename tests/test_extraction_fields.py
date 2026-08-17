@@ -31,15 +31,20 @@ class TestExtractionFields(unittest.TestCase):
         self.assertEqual(out["task_description"], "pc")
         self.assertEqual(out["data_summary"], "ds")
 
-    def test_normalize_failed_ideation_proposal_from_goal(self) -> None:
+    def test_normalize_ideation_rationale_alias(self) -> None:
         m = _load_extraction_fields()
         raw = {
             "memory_type": "ideation",
-            "status": "failed",
             "goal": "g",
+            "why_promising": "because",
         }
         out = m.normalize_llm_extraction(raw)
-        self.assertEqual(out["proposal_summary"], "g")
+        self.assertEqual(out["rationale"], "because")
+
+    def test_normalize_legacy_experiment_status(self) -> None:
+        m = _load_extraction_fields()
+        out = m.normalize_llm_extraction({"memory_type": "experiment", "status": "failed"})
+        self.assertEqual(out["outcome"], "failure")
 
 
 if __name__ == "__main__":

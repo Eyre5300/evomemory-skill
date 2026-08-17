@@ -48,48 +48,22 @@ def hub_headers() -> dict[str, str]:
 
 def json_to_ideation_payload(data: dict[str, Any]) -> dict[str, Any]:
     mem_type = str(data.get("memory_type") or "").strip().lower()
-    status = str(data.get("status") or "").strip().lower()
     if mem_type != "ideation":
         raise ValueError("not an ideation JSON")
-
-    if status == "failed":
-        proposal = str(data.get("proposal_summary") or "").strip()
-        trigger = str(data.get("trigger_conditions") or data.get("trigger") or "").strip()
-        do_not = str(
-            data.get("do_not_repeat_notes")
-            or data.get("do_not_repeat")
-            or data.get("countermeasures")
-            or ""
-        ).strip()
-        tags = str(data.get("retrieval_tags") or data.get("tags") or "").strip()
-        first_line = (proposal.split("\n")[0] or "Failed proposal").strip()
-        core_parts = [proposal]
-        if trigger:
-            core_parts.append("\n\nTrigger: " + trigger)
-        if do_not:
-            core_parts.append("\n\nDo-not-repeat: " + do_not)
-        return {
-            "goal": "Failed ideation",
-            "type": "failed",
-            "title": first_line[:200],
-            "core_idea": "".join(core_parts).strip(),
-            "requirements": tags or "(none)",
-        }
 
     goal = str(data.get("goal") or "").strip()
     title = str(data.get("title") or "").strip()
     core = str(data.get("core_idea") or "").strip()
-    why = str(data.get("why_promising") or "").strip()
+    rationale = str(data.get("rationale") or data.get("why_promising") or "").strip()
     req = str(data.get("requirements") or "").strip()
     validation = str(data.get("validation_plan") or data.get("minimal_validation_plan") or "").strip()
-    core_idea = (core + ("\n\nWhy promising: " + why if why else "")).strip()
-    requirements = (req + ("\n\nValidation plan: " + validation if validation else "")).strip()
     return {
         "goal": goal or "(unknown goal)",
-        "type": "promising",
         "title": title or "(untitled)",
-        "core_idea": core_idea or "(empty)",
-        "requirements": requirements or "(empty)",
+        "core_idea": core or "(empty)",
+        "rationale": rationale or None,
+        "requirements": req or "(empty)",
+        "validation_plan": validation or None,
     }
 
 
@@ -106,16 +80,18 @@ def json_to_experiment_payload(data: dict[str, Any]) -> dict[str, Any]:
     data_s = str(data.get("data_summary") or data.get("data_strategy") or "").strip()
     model_s = str(data.get("model_summary") or data.get("model_strategy") or "").strip()
     env_s = str(data.get("environment_constraints") or data.get("environment") or "").strip()
-    status = str(data.get("status") or "").strip()
     proposal_context = proposal or "(untitled experiment)"
-    if status:
-        # Keep environment free of status tokens so Hub embeddings stay clean.
-        proposal_context = (proposal_context + "\n\nStatus: " + status).strip()
     out: dict[str, Any] = {
         "proposal_context": proposal_context,
         "data_strategy": data_s or "(unknown)",
         "model_strategy": model_s or "(unknown)",
         "environment": env_s or "(none)",
+        "outcome": str(data.get("outcome") or "inconclusive").strip().lower(),
+        "result_summary": str(data.get("result_summary") or data.get("result") or "(not recorded)").strip(),
+        "metrics": data.get("metrics") if isinstance(data.get("metrics"), dict) else {},
+        "failure_reason": str(data.get("failure_reason") or "").strip() or None,
+        "conclusion": str(data.get("conclusion") or "(not recorded)").strip(),
+        "evidence_type": str(data.get("evidence_type") or "not_applicable").strip(),
     }
     pid = data.get("parent_ideation_id") or data.get("parent_ideation")
     if pid is not None and str(pid).strip():

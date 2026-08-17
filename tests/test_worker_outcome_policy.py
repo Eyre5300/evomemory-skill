@@ -15,15 +15,28 @@ def test_failed_run_cannot_publish_success_shaped_recipe():
     )
 
 
-def test_failed_run_may_publish_failed_ideation():
+def test_failed_run_may_publish_failed_experiment():
     assert _record_allowed_for_outcome(
         {"run_success_flag": False},
-        {"memory_type": "ideation", "status": "failed"},
+        {"memory_type": "experiment", "outcome": "failure"},
     )
 
 
-def test_failed_run_cannot_publish_promising_ideation():
+def test_failed_run_cannot_publish_ideation():
     assert not _record_allowed_for_outcome(
         {"run_success_flag": False},
-        {"memory_type": "ideation", "status": "promising"},
+        {"memory_type": "ideation"},
     )
+
+
+def test_failed_run_may_publish_inconclusive_experiment():
+    assert _record_allowed_for_outcome(
+        {"run_success_flag": False},
+        {"memory_type": "experiment", "outcome": "inconclusive"},
+    )
+
+
+def test_applied_ideation_only_allows_experiment():
+    ctx = {"run_success_flag": True, "_parent_ideation_id": "idea-id"}
+    assert _record_allowed_for_outcome(ctx, {"memory_type": "experiment", "outcome": "success"})
+    assert not _record_allowed_for_outcome(ctx, {"memory_type": "recipe"})

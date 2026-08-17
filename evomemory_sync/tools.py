@@ -348,7 +348,10 @@ def apply_evomemory(
         f"EvoMemory application recorded by the Hub. kind={kind}.\n"
         f"Fit reason: {_truncate_preview_text(fit, 600)}\n"
         f"Adaptation plan: {_truncate_preview_text(plan, 600)}\n"
-        f"[HUB_APPLIED:{mid}:{app_id}]\n\nSelected experience:\n{selected}"
+        # Keep the legacy marker for older middleware/consumers while the typed
+        # marker carries the memory kind needed for Ideation -> Experiment links.
+        f"[HUB_APPLIED:{mid}:{app_id}]\n"
+        f"[HUB_APPLIED:{kind}:{mid}:{app_id}]\n\nSelected experience:\n{selected}"
     )
     return _bounded_output(body, "EVOMEMORY_APPLIED_CONTEXT_MAX_CHARS", 7000)
 

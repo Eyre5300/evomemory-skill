@@ -95,26 +95,82 @@ async def share_failed_ideation(
     core_idea: str,
     requirements: str,
 ) -> dict[str, Any]:
-    """
-    供 Agent 调用的工具：当任务彻底失败、走入死胡同或遇到无法解决的 Bug 时调用此函数，将失败经验归档。
-    若未配置 token，返回 ``{"error": "..."}`` 而非抛错。
-    """
-    headers, err = headers_or_error()
-    if err:
-        return {"error": err}
-    payload: dict[str, Any] = {
+    """Deprecated compatibility wrapper: archive the attempt as a failed Experiment."""
+    return await share_experiment(
+        proposal_context=f"{title}\n\nGoal: {goal}",
+        data_strategy="No separate data strategy was recorded for this failed attempt.",
+        model_strategy=core_idea,
+        environment=f"Legacy failure constraints and environment notes: {requirements or 'not recorded'}",
+        outcome="failure",
+        result_summary=core_idea,
+        failure_reason=requirements,
+        conclusion="This attempted route failed under the recorded requirements and should be revised before reuse.",
+        evidence_type="agent_self_check",
+    )
+
+
+async def share_ideation(
+    goal: str,
+    title: str,
+    core_idea: str,
+    rationale: str,
+    requirements: str,
+    validation_plan: str,
+) -> dict[str, Any]:
+    """Archive an outcome-free hypothesis that another Agent can validate."""
+    payload = {
         "memory_type": "ideation",
-        "status": "failed",
         "goal": goal,
         "title": title,
         "core_idea": core_idea,
+        "rationale": rationale,
         "requirements": requirements,
+        "validation_plan": validation_plan,
     }
     try:
         result = await asyncio.to_thread(upload_memory_record, payload)
-        if result is None:
-            return {"error": "upload skipped or empty payload"}
-        return result
+        return result if result is not None else {"error": "upload skipped or empty payload"}
+    except Exception as e:
+        return {"error": f"Hub upload failed: {type(e).__name__}: {e}"}
+
+
+async def share_experiment(
+    proposal_context: str,
+    data_strategy: str,
+    model_strategy: str,
+    environment: str,
+    outcome: str,
+    result_summary: str,
+    conclusion: str,
+    metrics: Optional[dict[str, Any]] = None,
+    failure_reason: Optional[str] = None,
+    evidence_type: str = "not_applicable",
+    hardware_requirements: Optional[str] = None,
+    software_dependencies: Optional[str] = None,
+    parent_ideation_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Archive one concrete attempt, including success, failure, partial or inconclusive outcomes."""
+    if outcome not in {"success", "failure", "partial", "inconclusive"}:
+        return {"error": "invalid experiment outcome"}
+    payload = _strip_none({
+        "memory_type": "experiment",
+        "proposal_context": proposal_context,
+        "data_strategy": data_strategy,
+        "model_strategy": model_strategy,
+        "environment": environment,
+        "outcome": outcome,
+        "result_summary": result_summary,
+        "metrics": metrics or {},
+        "failure_reason": failure_reason,
+        "conclusion": conclusion,
+        "evidence_type": evidence_type,
+        "hardware_requirements": hardware_requirements,
+        "software_dependencies": software_dependencies,
+        "parent_ideation_id": parent_ideation_id,
+    })
+    try:
+        result = await asyncio.to_thread(upload_memory_record, payload)
+        return result if result is not None else {"error": "upload skipped or empty payload"}
     except Exception as e:
         return {"error": f"Hub upload failed: {type(e).__name__}: {e}"}
 
@@ -132,28 +188,19 @@ async def share_successful_experiment(
     供 Agent 调用的工具：当任务顺利完成且具有复现价值时调用此函数，将实验配置归档。
     若未配置 token，返回 ``{"error": "..."}``。
     """
-    headers, err = headers_or_error()
-    if err:
-        return {"error": err}
-    payload = _strip_none(
-        {
-            "memory_type": "experiment",
-            "proposal_context": proposal_context,
-            "data_strategy": data_strategy,
-            "model_strategy": model_strategy,
-            "environment": environment,
-            "hardware_requirements": hardware_requirements,
-            "software_dependencies": software_dependencies,
-            "parent_ideation_id": parent_ideation_id,
-        }
+    return await share_experiment(
+        proposal_context=proposal_context,
+        data_strategy=data_strategy,
+        model_strategy=model_strategy,
+        environment=environment,
+        outcome="success",
+        result_summary="The task completed successfully under the recorded configuration.",
+        conclusion="The recorded configuration produced a successful result.",
+        evidence_type="agent_self_check",
+        hardware_requirements=hardware_requirements,
+        software_dependencies=software_dependencies,
+        parent_ideation_id=parent_ideation_id,
     )
-    try:
-        result = await asyncio.to_thread(upload_memory_record, payload)
-        if result is None:
-            return {"error": "upload skipped or empty payload"}
-        return result
-    except Exception as e:
-        return {"error": f"Hub upload failed: {type(e).__name__}: {e}"}
 
 
 async def share_recipe(
@@ -374,8 +421,9 @@ AGENT_SYSTEM_PROMPT_EXTENSION = """
 在你完成用户分配的任何研发、代码编写或技术调研任务后，你必须执行以下反思与归档步骤：
 
 1. 评估任务结果：
-   - 如果任务尝试了多种方法但最终失败、走入死胡同或遇到无法解决的 Bug：你必须调用 `share_failed_ideation` 工具。在 `core_idea` 中详细记录失败的路径和报错信息，在 `requirements` 中提取“避坑指南”和检索标签。
-   - 如果任务顺利完成，且具有一定的通用价值：你必须调用 `share_successful_experiment` 工具，提炼出 `hardware_requirements` (如显存要求)、`software_dependencies` (如核心库版本)、`data_strategy` 和 `model_strategy`。
+   - 只有提出了尚未实施的可验证假设时，调用 `share_ideation`；Ideation 不带成功或失败标签。
+   - 实际实施了一条思路后，无论成功、失败、部分成功还是证据不足，都调用 `share_experiment`，填写 outcome、结果、结论和证据类型；采用 Hub Ideation 时必须关联 parent_ideation_id。
+   - 成功任务形成可直接复用的原子解法时调用 `share_recipe`；形成完整多步骤编排时调用 `share_workflow`。
 
 2. 执行要求：
    - 在调用工具前，请先向用户输出一段简短的总结，例如：“任务已完成。该过程具有复现价值，我正在将其归档至 EvoMemory 知识库...”

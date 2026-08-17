@@ -212,7 +212,7 @@ def _extract_applied_hub_applications(messages: list[BaseMessage]) -> dict[str, 
                     continue
                 text = _text_content(result)
                 match = re.search(
-                    r"\[HUB_APPLIED:([a-f0-9\-]{36}):([a-f0-9\-]{36})\]",
+                    r"\[HUB_APPLIED:(?:(?:ideation|experiment|workflow|recipe):)?([a-f0-9\-]{36}):([a-f0-9\-]{36})\]",
                     text,
                     re.IGNORECASE,
                 )
@@ -220,6 +220,33 @@ def _extract_applied_hub_applications(messages: list[BaseMessage]) -> dict[str, 
                     applications[match.group(1).lower()] = match.group(2).lower()
                 break
     return applications
+
+
+def _extract_applied_hub_kinds(messages: list[BaseMessage]) -> dict[str, str]:
+    """Return memory kind by id from trusted ``apply_evomemory`` results only."""
+    kinds: dict[str, str] = {}
+    pattern = re.compile(
+        r"\[HUB_APPLIED:(ideation|experiment|workflow|recipe):([a-f0-9\-]{36}):[a-f0-9\-]{36}\]",
+        re.IGNORECASE,
+    )
+    for msg in messages:
+        if not isinstance(msg, AIMessage):
+            continue
+        for tc in getattr(msg, "tool_calls", None) or []:
+            name = str(tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "") or "")
+            if name != "apply_evomemory":
+                continue
+            call_id = str(tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", "") or "")
+            if not call_id:
+                continue
+            for result in messages:
+                if not isinstance(result, ToolMessage) or str(getattr(result, "tool_call_id", "")) != call_id:
+                    continue
+                match = pattern.search(_text_content(result))
+                if match:
+                    kinds[match.group(2).lower()] = match.group(1).lower()
+                break
+    return kinds
 
 
 def _extract_applied_hub_references(messages: list[BaseMessage]) -> set[str]:
@@ -260,6 +287,7 @@ def _build_context(state: AgentState) -> dict[str, Any]:
     code, errors, has_err = _collect_tool_code_and_errors(messages)
     retrieved_hub_refs = _extract_hub_references(messages)
     applied_hub_applications = _extract_applied_hub_applications(messages)
+    applied_hub_kinds = _extract_applied_hub_kinds(messages)
     applied_hub_refs = set(applied_hub_applications)
     outcome = assess_run_outcome(messages, task=task)
     raw: dict[str, Any] = {
@@ -276,6 +304,10 @@ def _build_context(state: AgentState) -> dict[str, Any]:
         # "present in a search result". Keep retrievals separately for metrics.
         "_hub_references": sorted(applied_hub_refs) if applied_hub_refs else [],
         "_hub_applications": applied_hub_applications,
+        "_hub_application_kinds": applied_hub_kinds,
+        "_parent_ideation_id": next(
+            (mid for mid, kind in applied_hub_kinds.items() if kind == "ideation"), None
+        ),
         "_retrieved_hub_references": sorted(retrieved_hub_refs) if retrieved_hub_refs else [],
         "_tool_call_count": sum(
             len(getattr(msg, "tool_calls", None) or []) for msg in messages if isinstance(msg, AIMessage)
@@ -355,8 +387,8 @@ def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
     - Cited + success → record adaptation, no upload.
     - Cited + failure → record negative adaptation only. An unvalidated failed
       run must never publish a correction or success-shaped memory.
-    - No citation + success → upload (must pass duplicate check upstream).
-    - No citation + failure → no upload.
+    - No citation → run extractor. Failed runs are constrained by the worker to
+      failure/inconclusive Experiment or skip.
     """
     hub_refs = [str(x).strip() for x in (ctx.get("_hub_references") or []) if str(x).strip()]
     run_success = bool(ctx.get("run_success_flag", False))
@@ -366,9 +398,9 @@ def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
     record_download_ids: list[str] = []
     adaptation_ids = list(hub_refs)
 
-    should_upload = False
-    if not hub_refs and run_success:
-        should_upload = True
+    kinds = ctx.get("_hub_application_kinds") or {}
+    applied_ideation = any(str(kinds.get(mid) or "") == "ideation" for mid in hub_refs)
+    should_upload = (not hub_refs) or applied_ideation
 
     return {
         "hub_refs": hub_refs,
@@ -513,14 +545,12 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
                 logger.warning("evomemory_sync: adaptation request failed", exc_info=True)
 
         if not actions["should_upload"]:
-            if not hub_refs and not ctx.get("run_success_flag"):
-                logger.info(
-                    "evomemory_sync: run not successful without Hub refs → skip upload (%s)",
-                    ctx.get("validation_reason") or "tool/code/validation failure",
-                )
             return
 
-        logger.info("evomemory_sync: run succeeded without Hub refs → upload (duplicate check)")
+        logger.info(
+            "evomemory_sync: independent run completed (success=%s) → extract eligible memory",
+            bool(ctx.get("run_success_flag")),
+        )
 
         tmp_path: str | None = None
         try:

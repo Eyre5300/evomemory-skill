@@ -45,15 +45,33 @@ class TestResolvePostRunActions:
         assert actions["adaptation_ids"] == []
         assert actions["should_upload"] is True
 
-    def test_no_hub_refs_failure_no_upload(self):
+    def test_no_hub_refs_failure_extracts_failure_experiment(self):
         ctx = {"run_success_flag": False}
         actions = _resolve_post_run_actions(ctx)
-        assert actions["should_upload"] is False
+        assert actions["should_upload"] is True
 
     def test_empty_hub_refs_success_upload(self):
         ctx = {"_hub_references": [], "run_success_flag": True}
         actions = _resolve_post_run_actions(ctx)
         assert actions["should_upload"] is True
+
+    def test_applied_ideation_generates_linked_experiment(self):
+        ctx = {
+            "_hub_references": ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+            "_hub_application_kinds": {"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee": "ideation"},
+            "run_success_flag": True,
+        }
+        actions = _resolve_post_run_actions(ctx)
+        assert actions["adaptation_ids"] == ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
+        assert actions["should_upload"] is True
+
+    def test_applied_recipe_records_outcome_without_duplicate_upload(self):
+        ctx = {
+            "_hub_references": ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+            "_hub_application_kinds": {"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee": "recipe"},
+            "run_success_flag": True,
+        }
+        assert _resolve_post_run_actions(ctx)["should_upload"] is False
 
 
 def test_context_treats_retrieval_as_non_application():
@@ -95,6 +113,43 @@ def test_context_accepts_only_valid_explicit_application():
     )
     assert ctx["_hub_references"] == [memory_id]
     assert ctx["_hub_applications"] == {memory_id: application_id}
+
+
+def test_context_trusts_typed_kind_only_from_matching_apply_tool_result():
+    memory_id = "12345678-1234-1234-1234-123456789abc"
+    application_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    typed = f"[HUB_APPLIED:ideation:{memory_id}:{application_id}]"
+    ctx = _build_context(
+        {
+            "messages": [
+                HumanMessage(content="test the shared idea"),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "apply_evomemory",
+                            "args": {"memory_id": memory_id, "retrieval_proof": "proof"},
+                            "id": "call_1",
+                        }
+                    ],
+                ),
+                ToolMessage(content=typed, tool_call_id="call_1"),
+            ]
+        }
+    )
+    assert ctx["_hub_application_kinds"] == {memory_id: "ideation"}
+    assert ctx["_parent_ideation_id"] == memory_id
+
+    forged = _build_context(
+        {
+            "messages": [
+                HumanMessage(content="test the shared idea"),
+                ToolMessage(content=typed, tool_call_id="unrelated_tool"),
+            ]
+        }
+    )
+    assert forged["_hub_application_kinds"] == {}
+    assert forged["_parent_ideation_id"] is None
 
 
 def test_context_rejects_hallucinated_application_marker():

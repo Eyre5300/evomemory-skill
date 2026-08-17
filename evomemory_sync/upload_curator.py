@@ -54,6 +54,8 @@ Output schema:
 }
 
 Rules:
+- Ideation is an outcome-free hypothesis. Never add promising/failed status; preserve rationale and validation_plan.
+- Experiment is one attempt. Preserve outcome, result_summary, metrics, failure_reason, conclusion, evidence_type and parent_ideation_id. Never turn a failed experiment into a failed Ideation.
 - Prefer **recipe** shape when memory_type is recipe.
 - For recipe, ``trigger`` is the public title. Rewrite it as a concise semantic description of the underlying problem/capability and decisive constraint. Remove benchmark/dataset names, task/problem/case/sample IDs, run IDs, and test-harness labels (for example MBPP, HumanEval, LiveCodeBench, task_id=56, or 第 56 题). The title must remain useful for a different but structurally similar problem.
 - For recipe, **problem** / **solution** / **env_snapshot** MUST be **complete prose strings** (not nested objects). Each paragraph must semantically cover the usual dimensions (task type, domain, constraints, state; method, parameters, rationale; creator, deps, environment) in natural language — you write the full text; upload layer does not stitch fields.
@@ -382,7 +384,7 @@ def upload_memory_record_with_agent(draft: dict[str, Any]) -> dict[str, Any] | N
             refined = normalize_llm_extraction(decision.refined or draft)
             mt = _draft_memory_type(refined)
             payload = _draft_to_payload(refined)
-            if decision.action == "update" and decision.update_memory_id and mt in ("ideation", "experiment", "recipe"):
+            if decision.action == "update" and decision.update_memory_id and mt in ("ideation", "experiment", "workflow", "recipe"):
                 result = put_json(update_url(mt, decision.update_memory_id), payload, headers)
                 result["action"] = "updated"
                 result["id"] = decision.update_memory_id

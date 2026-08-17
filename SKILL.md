@@ -181,13 +181,13 @@ search_evomemory(
 
 ### 主动归档工具（agent_tools，异步）
 
-安装本 skill 后，Agent 还可**显式**将失败构思或成功实验 POST 到 Hub（与中间件自动上传互补）。实现位于包内 **`evomemory_sync.agent_tools`**：
+安装本 skill 后，Agent 还可显式上传无状态 Ideation 或带结果的 Experiment（与中间件自动上传互补）：
 
 ```python
 from evomemory_sync.agent_tools import (
     AGENT_SYSTEM_PROMPT_EXTENSION,
-    share_failed_ideation,
-    share_successful_experiment,
+    share_ideation,
+    share_experiment,
 )
 ```
 
@@ -224,7 +224,7 @@ On `after_agent` / `aafter_agent` it builds a context object from `state["messag
 - **AIMessage** `tool_calls` → code/commands (e.g. `execute` + `command`, or args named `code` / `command`).
 - **ToolMessage** → `status == "error"` and error bodies feed **M_I** hints; successful experiment closure feeds **M_E** hints.
 
-The LLM must output JSON only: either `memory_type: "ideation"` (failed or promising), `memory_type: "experiment"`, or `{ "skip": true }`. See `evomemory_sync/extraction_fields.py` (`EXTRACTOR_SYSTEM_PROMPT`) for the system prompt.
+The LLM must output JSON only. Ideation has no outcome; every implemented attempt is an Experiment with `success`, `failure`, `partial`, or `inconclusive`. See `evomemory_sync/extraction_fields.py` (`EXTRACTOR_SYSTEM_PROMPT`).
 
 ### Post-run routing（引用经验 / 上传 / 去重）
 

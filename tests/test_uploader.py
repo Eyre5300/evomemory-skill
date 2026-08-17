@@ -25,22 +25,22 @@ class TestJsonToIdeationPayload:
         assert result["goal"] == "Test goal"
         assert result["title"] == "Test title"
         assert result["core_idea"] == "Test idea"
-        assert result["type"] != "failed"
+        assert "type" not in result
 
-    def test_failed_ideation(self):
+    def test_ideation_keeps_rationale_and_validation_plan_separate(self):
         data = {
             "memory_type": "ideation",
-            "status": "failed",
-            "proposal_summary": "Failed proposal text",
-            "trigger_conditions": "Some trigger",
-            "do_not_repeat_notes": "Don't do this again",
+            "goal": "Explore semantic retrieval",
+            "title": "Semantic retrieval hypothesis",
+            "core_idea": "Represent task capability and constraints",
+            "rationale": "Exact fingerprints do not transfer",
+            "requirements": "An embedding model is required",
+            "validation_plan": "Measure Recall at 3",
         }
         result = json_to_ideation_payload(data)
-        assert result["type"] == "failed"
-        assert result["goal"] == "Failed ideation"
-        assert "Failed proposal text" in result["core_idea"]
-        assert "Trigger: Some trigger" in result["core_idea"]
-        assert "Do-not-repeat: Don't do this again" in result["core_idea"]
+        assert "type" not in result
+        assert result["rationale"] == "Exact fingerprints do not transfer"
+        assert result["validation_plan"] == "Measure Recall at 3"
 
     def test_wrong_type_raises(self):
         data = {"memory_type": "experiment"}
@@ -70,12 +70,19 @@ class TestJsonToExperimentPayload:
             "data_summary": "Data info",
             "model_summary": "Model info",
             "environment_constraints": "Constraints",
+            "outcome": "failure",
+            "result_summary": "The deterministic test failed",
+            "failure_reason": "Assertion mismatch",
+            "conclusion": "Reject this configuration",
+            "metrics": {"passed": 0},
         }
         result = json_to_experiment_payload(data)
         assert result["proposal_context"] == "Task desc"
         assert result["data_strategy"] == "Data info"
         assert result["model_strategy"] == "Model info"
         assert result["environment"] == "Constraints"
+        assert result["outcome"] == "failure"
+        assert result["metrics"] == {"passed": 0}
 
     def test_parent_ids_preserved(self):
         data = {

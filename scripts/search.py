@@ -180,7 +180,7 @@ def format_experiment(item: dict[str, Any], idx: int, full_text: bool = False) -
     data_s = _preview(item.get("data_strategy") or "?", 260, full_text)
     model_s = _preview(item.get("model_strategy") or "?", 260, full_text)
     env_s = _preview(item.get("environment") or "?", 260, full_text)
-    status = _preview(item.get("status") or "?", 40, full_text)
+    status = _preview(item.get("outcome") or "inconclusive", 40, full_text)
     pid = str(item.get("parent_ideation_id") or "").strip() or "—"
     lines = [
         f"[{idx}] {proposal}",
@@ -233,7 +233,7 @@ def filter_results(
             if t != ideation_type:
                 continue
         if kind == "experiment" and experiment_status:
-            st = str(item.get("status") or "").strip().lower()
+            st = str(item.get("outcome") or "").strip().lower()
             if st != experiment_status:
                 continue
         out.append(item)
@@ -271,12 +271,12 @@ def main():
     )
     parser.add_argument(
         "--ideation-type",
-        choices=["promising", "failed"],
-        help="Only for kind=ideation: filter by ideation type",
+        choices=["idea", "promising", "failed"],
+        help="Deprecated compatibility filter for legacy Hub data; new ideations always use type=idea",
     )
     parser.add_argument(
         "--experiment-status",
-        help="Only for kind=experiment: filter by status (e.g. completed, failed)",
+        help="Only for kind=experiment: filter by outcome (success, failure, partial, inconclusive)",
     )
     parser.add_argument(
         "--contains",

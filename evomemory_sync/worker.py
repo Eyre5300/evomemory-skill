@@ -22,11 +22,13 @@ logger = logging.getLogger("evomemory_sync.worker")
 
 def _record_allowed_for_outcome(ctx: dict, record: dict) -> bool:
     """Never publish an unvalidated success-shaped memory from a failed run."""
+    if ctx.get("_parent_ideation_id"):
+        return str(record.get("memory_type") or "").strip().lower() == "experiment"
     if bool(ctx.get("run_success_flag", False)):
         return True
     memory_type = str(record.get("memory_type") or "").strip().lower()
-    status = str(record.get("status") or "").strip().lower()
-    return memory_type == "ideation" and status == "failed"
+    outcome = str(record.get("outcome") or "").strip().lower()
+    return memory_type == "experiment" and outcome in {"failure", "inconclusive"}
 
 
 def _default_worker_log_path() -> Path:
@@ -79,6 +81,9 @@ def main() -> int:
         if record.get("skip") is True:
             logger.info("offline worker skip ctx_hash=%s", ctx_hash)
             return 0
+        parent_ideation_id = str(ctx.get("_parent_ideation_id") or "").strip()
+        if parent_ideation_id and str(record.get("memory_type") or "").strip().lower() == "experiment":
+            record["parent_ideation_id"] = parent_ideation_id
         if not _record_allowed_for_outcome(ctx, record):
             logger.info(
                 "offline worker skip_unvalidated_failure ctx_hash=%s memory_type=%s status=%s",
