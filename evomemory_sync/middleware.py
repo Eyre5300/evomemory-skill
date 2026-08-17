@@ -227,6 +227,33 @@ def _extract_applied_hub_references(messages: list[BaseMessage]) -> set[str]:
     return set(_extract_applied_hub_applications(messages))
 
 
+def _provider_reported_token_cost(messages: list[BaseMessage]) -> int | None:
+    """Sum primary-agent tokens without estimating from private message text."""
+    total = 0
+    observed = False
+    for msg in messages:
+        if not isinstance(msg, AIMessage):
+            continue
+        usage = getattr(msg, "usage_metadata", None)
+        if not isinstance(usage, dict):
+            response = getattr(msg, "response_metadata", None) or {}
+            usage = response.get("token_usage") or response.get("usage") or {}
+        if not isinstance(usage, dict):
+            continue
+        raw_total = usage.get("total_tokens")
+        if raw_total is None:
+            raw_total = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0) + int(
+                usage.get("output_tokens") or usage.get("completion_tokens") or 0
+            )
+        try:
+            value = max(0, int(raw_total or 0))
+        except (TypeError, ValueError):
+            continue
+        total += value
+        observed = True
+    return total if observed else None
+
+
 def _build_context(state: AgentState) -> dict[str, Any]:
     messages = list(state.get("messages") or [])
     task = _first_human_task(messages)
@@ -253,6 +280,7 @@ def _build_context(state: AgentState) -> dict[str, Any]:
         "_tool_call_count": sum(
             len(getattr(msg, "tool_calls", None) or []) for msg in messages if isinstance(msg, AIMessage)
         ),
+        "_token_cost": _provider_reported_token_cost(messages),
         "_agent_metadata": {
             "model": _env("EVOMEMORY_AGENT_MODEL") or _env("EVOMEMORY_EXTRACTOR_MODEL"),
             "instance_id": _env("EVOMEMORY_AGENT_INSTANCE_ID"),
@@ -310,6 +338,11 @@ def _adaptation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
         "validation_reason": str(ctx.get("validation_reason") or "")[:500],
         "agent_profile": profile,
         "tool_calls": max(0, int(ctx.get("_tool_call_count") or 0)),
+        "token_cost": (
+            max(0, int(ctx["_token_cost"]))
+            if ctx.get("_token_cost") is not None
+            else None
+        ),
         "failure_type": failure_type,
     }
 

@@ -79,8 +79,10 @@ python scripts/setup.py wizard
 | `EVOMEMORY_ADAPTATION_FINGERPRINT_KEY` | No | generated once in root `.env` | Per-installation secret used to HMAC task fingerprints. Keep it private; it supports local repeat-task deduplication, not cross-user task matching. |
 | `EVOMEMORY_HUB_RESOLVE_CACHE_TTL_SECONDS` | No | `3600` | How long `resolve_working_hub_base_url_cached` keeps a probe result (long-running agents can pick up Hub URL changes without restart) |
 | `EVOMEMORY_HUB_RESOLVE_CACHE_MAX_ENTRIES` | No | `32` | Max cached Hub origins (FIFO eviction) |
-| `EVOMEMORY_SEARCH_TOP_K` | No | 10 | Default for `scripts/search.py` `--top-k` (1–100) |
-| `EVOMEMORY_SEARCH_MIN_SIMILARITY` | No | 0 | Default for `scripts/search.py` `--min-similarity` (0–1) |
+| `EVOMEMORY_SEARCH_TOP_K` | No | 3 | Agent tool candidate count (hard-capped at 3); CLI may still request 1–100 |
+| `EVOMEMORY_SEARCH_MIN_SIMILARITY` | No | 0.5 | Agent tool default semantic floor (0–1) |
+| `EVOMEMORY_SEARCH_CONTEXT_MAX_CHARS` | No | 3600 | Hard budget for all lightweight candidates returned to the Agent |
+| `EVOMEMORY_APPLIED_CONTEXT_MAX_CHARS` | No | 7000 | Hard budget for the one selected full experience |
 | `EVOMEMORY_SYNC_ENABLED` | No | `true` | Set `0`/`false` to disable `EvoMemorySyncMiddleware` |
 | `EVOMEMORY_SYNC_SEND_RAW_CONTEXT` | No | `false` | If `true`, skip client-side redaction in middleware (unsafe; debugging only) |
 | `EVOMEMORY_WORKER_LOG_FILE` | No | `$HOME/.evomemory/worker.log` (POSIX) or equivalent | Worker process log file; middleware redirects child **stdout/stderr** here by default |
@@ -94,7 +96,7 @@ python scripts/setup.py wizard
 
 当 Agent 注册了 `EvoMemorySyncMiddleware` 且设置了 `EVOMEMORY_API_TOKEN`，每次 run 结束都会启动离线 worker：调用 LLM 生成 Hub 结构化 JSON，并通过 **`upload_memory_record`** 上传。上传路径默认为 **Agent Curator**：先检索 Hub 相似卡，再由 LLM 决定 **create / update / skip** 并润色正文；若 Curator 关闭或失败，则回退到固定阈值的语义去重（`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`）。
 
-**Post-run routing:** `search_evomemory` only returns results and does **not** count a retrieval. For an authenticated search, each result carries a short-lived proof signed by the Hub and bound to the account, memory ID, and content revision. After deciding to use a result, the Agent calls `apply_evomemory(memory_id, retrieval_proof)`; the Hub verifies the proof, records one retrieval per account/revision, and returns an idempotent `application_id`. Only a real tool result containing that ID can be attributed by middleware. The eventual success or failure event contains the application ID, a local-keyed HMAC-SHA256 task fingerprint, weak Agent self-check status, tool-call count, failure class, and non-secret Agent profile; it never contains the raw task, trace, or proof. Strong validation types are reserved for trusted Hub verifiers. Upload only when: applied + failed (correction, curator prefers update), or not applied + succeeded. Not applied + failed → no upload. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
+**Post-run routing:** `search_evomemory` sends a structured problem profile and requests Top-3 lightweight candidates; seeing candidates does **not** count a retrieval. For an authenticated search, each result carries a short-lived proof signed by the Hub and bound to the account, memory ID, and content revision. After checking fit and expected utility, the Agent calls `apply_evomemory(memory_id, retrieval_proof, fit_reason, adaptation_plan)`; the Hub verifies the proof, records one retrieval per account/revision, returns an idempotent `application_id`, and returns only the selected full memory in that same response. Only a real tool result containing that ID can be attributed by middleware. The eventual success or failure event contains the application ID, a local-keyed HMAC-SHA256 task fingerprint used only for idempotency, provider-reported token count, weak Agent self-check status, tool-call count, failure class, and non-secret Agent profile; it never contains the raw task, trace, fit reason, adaptation plan, or proof. Applied runs never auto-upload a correction: success or failure only updates evidence. Not applied + success may upload; not applied + failure does not. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
 
 ### Downloaded workflow permissions
 
@@ -112,7 +114,7 @@ runner = WorkflowRunner(
 
 The remote manifest can request `network_domains`, `read_paths`, `write_paths`, and `allow_shell`, but cannot grant those permissions locally. Execution is additionally bounded by `execution_policy.max_steps` and `max_output_chars`.
 
-When an agent **uses** Hub memories via `search_evomemory`, the skill calls **`POST /memory/{kind}/{id}/record-download`** for each returned row so the website **download_count** stays in sync (web “下载” button uses the full `GET .../download` endpoint).
+Search impressions do not increment downloads. A download/retrieval is recorded only when `apply_evomemory` successfully exchanges a signed proof for an application ID; repeated use by the same account and revision remains idempotent.
 
 ## Semantic search (`search.py`)
 

@@ -1,8 +1,10 @@
 ---
 name: evomemory-sync
 description: 将 EvoScientist/Agent 的执行过程自动沉淀到 EvoMemory Hub。包含 LangChain 中间件（run 结束后自动上传）与 CLI 配置/语义检索工具。
-tags: [memory, sharing, collaboration, community, 中文]
-compatibility: Python 3.10+；需要可访问 Hub（注册/登录）与可选的 OpenAI 兼容 Chat API（Extractor/Curator）。
+metadata:
+  short-description: 跨 Agent 总结、检索、应用并评估共享经验
+  tags: memory, sharing, collaboration, community, 中文
+  compatibility: Python 3.10+；需要可访问 Hub（注册/登录）与可选的 OpenAI 兼容 Chat API（Extractor/Curator）。
 ---
 
 # EvoMemory Sync Skill（中文说明）
@@ -159,13 +161,23 @@ Load `.env` before starting the CLI (or rely on the middleware’s optional `pyt
 把 `search_evomemory` 注入到 `tools` 列表后，大模型可以在研究思路不足或遇到棘手报错时，主动调用：
 
 ```text
-search_evomemory(query="xxx", memory_kind="ideation" | "experiment")
+search_evomemory(
+    query="要达到的结果",
+    memory_kind="recipe",
+    constraints="约束与验收条件",
+    current_state="已有状态和尝试",
+    observed_failure="错误或不确定点",
+    environment="工具、运行时和依赖",
+)
 ```
 
 建议约定：
 - `memory_kind="ideation"`：用于检索历史构思、失败案例和避坑经验（更适合“报错了怎么避坑”）。
 - `memory_kind="experiment"`：用于检索可复用实验策略与结果（更适合“下一步怎么做实验”）。
-- `query` 尽量写清楚当前任务、报错关键词或研究目标，检索效果会更好。
+- 不按题号或原文哈希匹配。Agent 应把具体问题抽象为目标、约束、当前状态、失败模式和环境。
+- 默认只返回 Top-3 轻量候选，不把完整 solution 放进上下文。
+- 比较候选适用条件、历史成功/应用后失败、平均 Token 和当前约束；预计净效用不为正时 abstain。
+- 选择后调用 `apply_evomemory(memory_id, retrieval_proof, fit_reason, adaptation_plan)`；该调用同时创建可信应用记录并获取唯一一条完整经验。
 
 ### 主动归档工具（agent_tools，异步）
 
@@ -219,11 +231,13 @@ The LLM must output JSON only: either `memory_type: "ideation"` (failed or promi
 | 情况 | record-download | verify | 上传 |
 |------|-----------------|--------|------|
 | 引用了 Hub 经验 `[HUB_REF:…]`，任务**成功** | ✅ | ✅ | ❌ |
-| 引用了 Hub 经验，任务**失败** | ✅ | ❌ | ✅（修正，策展优先 **update** 自己的卡） |
+| 引用了 Hub 经验，任务**失败** | ✅ | ❌ | ❌（仅记录应用后失败，防止失败运行发布伪修正） |
 | **未**引用经验，任务**成功** | — | — | ✅（须经重复检验） |
 | **未**引用经验，任务**失败** | — | — | ❌ |
 
 凡进入上传路径的记录，一律经 **Agent Curator**（或回退语义去重）：重复过高 **skip**、与自己旧卡相似则 **update**、否则 **create**。
+
+`task_fingerprint` 只是客户端本地 HMAC，用于同一应用结果的隐私化幂等去重；不得用于检索、排序或判断两个实际问题相同。Middleware 从模型供应商的 usage metadata 汇总本次主 Agent Token，与成功/失败和工具调用数一起回传。Hub 将“显式应用后失败”统计为疑似负迁移；没有配对对照时不宣称严格因果。
 
 ## Hub field reference
 

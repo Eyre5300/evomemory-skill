@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from evomemory_sync.middleware import (
     _adaptation_payload,
     _build_context,
+    _provider_reported_token_cost,
     _resolve_post_run_actions,
 )
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -130,6 +131,7 @@ def test_adaptation_payload_hmacs_task_and_excludes_trace():
                 "has_tool_error_flag": False,
                 "has_code_runtime_error_flag": False,
                 "_tool_call_count": 3,
+                "_token_cost": 456,
                 "_agent_metadata": {"model": "test-model"},
             }
         )
@@ -143,3 +145,12 @@ def test_adaptation_payload_hmacs_task_and_excludes_trace():
     assert payload["evidence_type"] == "agent_self_check"
     assert payload["failure_type"] == "validation_failed"
     assert payload["tool_calls"] == 3
+    assert payload["token_cost"] == 456
+
+
+def test_provider_reported_token_cost_sums_primary_agent_messages():
+    messages = [
+        AIMessage(content="one", usage_metadata={"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}),
+        AIMessage(content="two", response_metadata={"token_usage": {"prompt_tokens": 7, "completion_tokens": 3}}),
+    ]
+    assert _provider_reported_token_cost(messages) == 22

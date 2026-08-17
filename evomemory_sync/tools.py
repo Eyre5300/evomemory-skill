@@ -23,21 +23,58 @@ except Exception:
 
 
 def _default_top_k() -> int:
-    raw = _env("EVOMEMORY_SEARCH_TOP_K", "10")
+    raw = _env("EVOMEMORY_SEARCH_TOP_K", "3")
     try:
         k = int(raw)
-        return max(1, min(100, k))
+        return max(1, min(3, k))
     except ValueError:
-        return 10
+        return 3
 
 
 def _default_min_similarity() -> float:
-    raw = _env("EVOMEMORY_SEARCH_MIN_SIMILARITY", "0")
+    raw = _env("EVOMEMORY_SEARCH_MIN_SIMILARITY", "0.5")
     try:
         v = float(raw)
         return max(0.0, min(1.0, v))
     except ValueError:
-        return 0.0
+        return 0.5
+
+
+def _positive_int_env(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    try:
+        value = int(_env(name, str(default)))
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _problem_profile(
+    query: str,
+    constraints: str,
+    current_state: str,
+    observed_failure: str,
+    environment: str,
+) -> str:
+    fields = (
+        ("Objective", query, 1000),
+        ("Constraints and acceptance", constraints, 800),
+        ("Current state and attempted paths", current_state, 800),
+        ("Observed failure or uncertainty", observed_failure, 800),
+        ("Environment and dependencies", environment, 600),
+    )
+    lines = [
+        f"{label}: {_truncate_preview_text(str(value or ''), limit)}"
+        for label, value, limit in fields
+        if str(value or "").strip()
+    ]
+    return "\n".join(lines)
+
+
+def _bounded_output(text: str, env_name: str, default: int) -> str:
+    budget = _positive_int_env(env_name, default, minimum=800, maximum=20_000)
+    if len(text) <= budget:
+        return text
+    return text[:budget].rstrip() + "\n…[EvoMemory context budget reached]"
 
 
 def _optional_auth_headers() -> Dict[str, str]:
@@ -136,23 +173,26 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
             blocks.append("\n".join([x for x in lines if x]))
         elif kind == "recipe":
             trigger = str(item.get("trigger") or "").strip()
-            problem = str(item.get("problem") or "").strip()
-            solution = str(item.get("solution") or "").strip()
-            env_snap = str(item.get("env_snapshot") or "").strip()
-            result_s = str(item.get("result") or "").strip()
+            problem = str(item.get("problem_summary") or item.get("problem") or "").strip()
             tags = str(item.get("tags") or "").strip()
-            verified = int(item.get("verified_count") or 0)
+            evidence = item.get("evidence") or {}
+            recommendation = str(item.get("recommended_action") or "inspect")
+            reason = str(item.get("recommendation_reason") or "核对当前约束后决定")
             lines = [
                 f"[{i}] 📋 {trigger or '(untitled recipe)'}",
                 id_line,
-                f"    问题: {problem}" if problem else "",
-                f"    方案: {solution}" if solution else "",
-                f"    环境: {env_snap}" if env_snap else "",
-                f"    效果: {result_s}" if result_s else "",
+                f"    问题摘要: {_truncate_preview_text(problem, 260)}" if problem else "",
                 f"    标签: {tags}" if tags else "",
-                f"    验证次数: {verified}" if verified else "",
                 f"    质量状态: {lifecycle}",
-                f"    相似度 {pick_similarity(item)}" if pick_similarity(item) else "",
+                f"    建议: {recommendation} — {reason}",
+                (
+                    "    成效: "
+                    f"成功 {int(evidence.get('explicit_success_count') or 0)} / "
+                    f"应用后失败 {int(evidence.get('failure_after_application_count') or 0)} / "
+                    f"平均 Token {evidence.get('avg_application_token_cost') or '未知'}"
+                ),
+                f"    相似度 {pick_similarity(item)} · 效用 {float(item.get('utility_score') or 0):.3f}",
+                f"    全文预计 {int(item.get('estimated_full_text_tokens') or 0)} tokens",
             ]
             blocks.append("\n".join([x for x in lines if x]))
         else:
@@ -187,8 +227,21 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
 
 
 @tool
-def search_evomemory(query: str, memory_kind: str) -> str:
-    """在以下场景请优先调用此工具：你缺乏研究思路、需要快速借鉴社区方案、或者代码执行遇到棘手报错难以推进。它会检索 EvoMemory Hub 社区历史经验（向量相似度）。`memory_kind` 为 `ideation`、`experiment`、`workflow` 或 `recipe`。"""
+def search_evomemory(
+    query: str,
+    memory_kind: str,
+    constraints: str = "",
+    current_state: str = "",
+    observed_failure: str = "",
+    environment: str = "",
+) -> str:
+    """检索结构相似的社区经验，而不是查找相同题目。
+
+    query 写清真正目标；并尽量提供 constraints、current_state、
+    observed_failure、environment。工具只返回 Top-3 轻量候选。逐项核对适用
+    条件和当前约束；没有正净效用候选时必须 abstain，不要为了使用而使用。
+    memory_kind 为 ideation、experiment、workflow 或 recipe。
+    """
 
     ok, kind = _validate_kind(memory_kind)
     if not ok:
@@ -197,6 +250,7 @@ def search_evomemory(query: str, memory_kind: str) -> str:
     q = (query or "").strip()
     if not q:
         return "检索失败：query 不能为空。"
+    profile = _problem_profile(q, constraints, current_state, observed_failure, environment)
 
     base = get_base_url()
     headers = _optional_auth_headers()
@@ -207,7 +261,8 @@ def search_evomemory(query: str, memory_kind: str) -> str:
         payload: Dict[str, Any] = {
             "top_k": _default_top_k(),
             "min_similarity": _default_min_similarity(),
-            "query_text": q,
+            "query_text": profile,
+            "response_mode": "summary",
         }
         r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=tls_verify())
         if r.status_code >= 400:
@@ -225,28 +280,47 @@ def search_evomemory(query: str, memory_kind: str) -> str:
         if not results:
             return f"没有搜到与 {q!r} 相关的 {kind} 记忆。你可以换个关键词再试。"
 
-        # 保持 Observation 紧凑：最多展示 5 条
-        return _format_results(kind, results, max_items=5)
+        rendered = _format_results(kind, results, max_items=3)
+        avoid_count = sum(
+            str(row.get("recommended_action") or "") == "avoid" for row in results[:3]
+        )
+        decision = (
+            "\n\n全部候选均建议 avoid：本次应 abstain 并独立解决。"
+            if results and avoid_count == len(results[:3])
+            else "\n\n只在候选适用条件覆盖当前约束且预期净效用为正时调用 apply_evomemory；否则 abstain。"
+        )
+        return _bounded_output(
+            rendered + decision,
+            "EVOMEMORY_SEARCH_CONTEXT_MAX_CHARS",
+            3600,
+        )
     except Exception as e:
         return f"检索失败：{type(e).__name__}: {e}。建议检查 `EVOMEMORY_API_BASE_URL` 与网络连接。"
 
 
 @tool
-def apply_evomemory(memory_id: str, retrieval_proof: str) -> str:
-    """Explicitly mark one retrieved EvoMemory result as being applied.
+def apply_evomemory(
+    memory_id: str,
+    retrieval_proof: str,
+    fit_reason: str,
+    adaptation_plan: str,
+) -> str:
+    """选择一条候选、创建可信应用并按需获取其完整正文。
 
-    Call this only after deciding that the result changes the plan, code, or
-    debugging step. Copy both ``memory_id`` and ``HUB_APPLY_PROOF`` from a prior
-    ``search_evomemory`` result. The middleware reports the eventual task
-    outcome; this call is only an attribution marker.
+    只有适用条件覆盖当前约束且预期收益大于上下文与工具开销时才调用。必须提供
+    具体 fit_reason 和 adaptation_plan；没有合适候选时不要调用，即 abstain。
     """
     mid = str(memory_id or "").strip().lower()
     proof = str(retrieval_proof or "").strip()
+    fit = str(fit_reason or "").strip()
+    plan = str(adaptation_plan or "").strip()
     if not mid or not proof:
         return (
             "Application was not recorded: use the memory_id and signed "
             "HUB_APPLY_PROOF returned by an authenticated search_evomemory call."
         )
+    if len(fit) < 12 or len(plan) < 12:
+        return "Application was not recorded: explain the concrete fit and adaptation plan, or abstain."
     try:
         from .agent_tools import headers_or_error
         from .hub_usage import create_application_by_id
@@ -262,10 +336,21 @@ def apply_evomemory(memory_id: str, retrieval_proof: str) -> str:
     app_id = str(application.get("application_id") or "").strip().lower()
     if not app_id:
         return "Application was not recorded: the Hub response did not contain an application id."
-    return (
-        "EvoMemory application recorded by the Hub. Now implement and validate the "
-        f"adapted step. [HUB_APPLIED:{mid}:{app_id}]"
+    content = application.get("memory_content") or {}
+    kind = str(application.get("memory_kind") or "memory")
+    sections = [
+        f"{key}: {value}"
+        for key, value in content.items()
+        if value not in (None, "", [], {})
+    ]
+    selected = "\n\n".join(sections) if sections else "(The legacy Hub did not return selected content.)"
+    body = (
+        f"EvoMemory application recorded by the Hub. kind={kind}.\n"
+        f"Fit reason: {_truncate_preview_text(fit, 600)}\n"
+        f"Adaptation plan: {_truncate_preview_text(plan, 600)}\n"
+        f"[HUB_APPLIED:{mid}:{app_id}]\n\nSelected experience:\n{selected}"
     )
+    return _bounded_output(body, "EVOMEMORY_APPLIED_CONTEXT_MAX_CHARS", 7000)
 
 
 def _require_auth_headers() -> tuple[dict[str, str] | None, str | None]:

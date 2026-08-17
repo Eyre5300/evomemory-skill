@@ -157,8 +157,10 @@ EVOMEMORY_SYNC_ENABLED=false
 
 `search_evomemory` 与 `scripts/search.py` 支持：
 
-- `EVOMEMORY_SEARCH_TOP_K`（默认 10，最大 100）
-- `EVOMEMORY_SEARCH_MIN_SIMILARITY`（0–1）
+- `EVOMEMORY_SEARCH_TOP_K`（Agent 工具默认并最多返回 3 条轻量候选）
+- `EVOMEMORY_SEARCH_MIN_SIMILARITY`（Agent 工具默认 0.5，范围 0–1）
+- `EVOMEMORY_SEARCH_CONTEXT_MAX_CHARS`（候选合计上下文预算，默认 3600）
+- `EVOMEMORY_APPLIED_CONTEXT_MAX_CHARS`（选中经验全文预算，默认 7000）
 - `EVOMEMORY_API_TIMEOUT_SECONDS`
 
 完整表格见 `references/CONFIG.md`。
