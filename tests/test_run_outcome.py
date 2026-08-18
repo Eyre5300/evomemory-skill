@@ -93,3 +93,69 @@ def test_search_memory_failure_text_does_not_poison_successful_execution():
     assert out["has_code_runtime_error_flag"] is False
     assert out["validation_status"] == "passed"
     assert out["run_success_flag"] is True
+    assert out["outcome_scope"] == "post_apply"
+
+
+def test_pre_apply_failure_does_not_poison_post_apply_success():
+    """Defer flow: independent fail → apply → pass must count as application success."""
+    msgs = [
+        HumanMessage(content="fix add_string with hidden asserts"),
+        ToolMessage(
+            content="[FAILED] AssertionError\nExit code: 1",
+            tool_call_id="run-1",
+            name="run_python",
+            status="success",
+        ),
+        ToolMessage(
+            content="candidates…",
+            tool_call_id="search-1",
+            name="search_evomemory",
+            status="success",
+        ),
+        ToolMessage(
+            content="EvoMemory application recorded by the Hub. [HUB_APPLIED:recipe:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb]",
+            tool_call_id="apply-1",
+            name="apply_evomemory",
+            status="success",
+        ),
+        ToolMessage(
+            content="[OK] all tests passed\nExit code: 0",
+            tool_call_id="run-2",
+            name="run_python",
+            status="success",
+        ),
+    ]
+    out = assess_run_outcome(msgs, task="fix add_string with hidden asserts")
+    assert out["outcome_scope"] == "post_apply"
+    assert out["has_tool_error_flag"] is False
+    assert out["has_code_runtime_error_flag"] is False
+    assert out["validation_status"] == "passed"
+    assert out["run_success_flag"] is True
+
+
+def test_post_apply_failure_still_counts_as_failure():
+    msgs = [
+        HumanMessage(content="fix with asserts"),
+        ToolMessage(
+            content="[FAILED] Exit code: 1",
+            tool_call_id="run-1",
+            name="run_python",
+            status="success",
+        ),
+        ToolMessage(
+            content="EvoMemory application recorded by the Hub.",
+            tool_call_id="apply-1",
+            name="apply_evomemory",
+            status="success",
+        ),
+        ToolMessage(
+            content="[FAILED] AssertionError\nExit code: 1",
+            tool_call_id="run-2",
+            name="run_python",
+            status="success",
+        ),
+    ]
+    out = assess_run_outcome(msgs, task="fix with asserts")
+    assert out["outcome_scope"] == "post_apply"
+    assert out["run_success_flag"] is False
+    assert out["has_code_runtime_error_flag"] is True or out["validation_status"] == "failed"

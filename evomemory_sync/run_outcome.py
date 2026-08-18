@@ -173,6 +173,26 @@ def _assess_validation(task: str, messages: list[BaseMessage]) -> dict[str, Any]
     return {"status": "failed", "reason": "self-check/ground-truth expected but outcome unclear"}
 
 
+def _index_after_last_successful_apply(messages: list[BaseMessage]) -> int | None:
+    """If the agent applied Hub memory, return the index *after* the last apply tool result.
+
+    Pre-apply independent failures (common with defer-search) must not poison the
+    application outcome. Return None when there was no successful apply.
+    """
+    last_apply = -1
+    for i, msg in enumerate(messages):
+        if not isinstance(msg, ToolMessage):
+            continue
+        if str(getattr(msg, "name", "") or "") != "apply_evomemory":
+            continue
+        if _has_tool_invocation_error(msg):
+            continue
+        last_apply = i
+    if last_apply < 0:
+        return None
+    return last_apply + 1
+
+
 def assess_run_outcome(messages: list[BaseMessage], *, task: str = "") -> dict[str, Any]:
     """Return success flags for middleware routing.
 
@@ -180,13 +200,19 @@ def assess_run_outcome(messages: list[BaseMessage], *, task: str = "") -> dict[s
     - no tool invocation errors
     - no code/runtime errors in execute outputs (non-zero exit, tracebacks, [FAILED])
     - when self-check or ground truth is applicable: validation passed or matches
+
+    When ``apply_evomemory`` succeeded earlier in the run, only the *post-apply*
+    tool trail is assessed. Failures before apply do not mark the application
+    (or the run success flag used for adaptation) as failed.
     """
-    tool_msgs = _tool_messages(messages)
+    start = _index_after_last_successful_apply(messages)
+    scoped = messages if start is None else messages[start:]
+    tool_msgs = _tool_messages(scoped)
     has_tool_error = any(_has_tool_invocation_error(m) for m in tool_msgs)
     has_code_runtime_error = any(
         _has_code_runtime_error(m) for m in tool_msgs if _is_execution_tool_message(m)
     )
-    validation = _assess_validation(task, messages)
+    validation = _assess_validation(task, scoped)
     val_status: ValidationStatus = validation["status"]
 
     run_success = (
@@ -201,4 +227,5 @@ def assess_run_outcome(messages: list[BaseMessage], *, task: str = "") -> dict[s
         "has_code_runtime_error_flag": has_code_runtime_error,
         "validation_status": val_status,
         "validation_reason": validation.get("reason", ""),
+        "outcome_scope": "post_apply" if start is not None else "full_run",
     }

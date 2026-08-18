@@ -228,7 +228,7 @@ The LLM must output JSON only. Ideation has no outcome; every implemented attemp
 
 ### Post-run routing（引用经验 / 上传 / 去重）
 
-**成功**定义（`run_success_flag`）：工具调用无错误；代码/命令输出无运行时错误（非零 exit、Traceback、`[FAILED]` 等）；若任务或输出中出现自检/真值信号（pytest、assert、ground truth、真值等），则须检测到通过或与真值一致，否则视为失败。
+**成功**定义（`run_success_flag`）：工具调用无错误；代码/命令输出无运行时错误（非零 exit、Traceback、`[FAILED]` 等）；若任务或输出中出现自检/真值信号（pytest、assert、ground truth、真值等），则须检测到通过或与真值一致，否则视为失败。若本轮曾成功调用 `apply_evomemory`，则**只评估 apply 之后**的工具轨迹（避免 defer 场景下「先独立失败、再应用经验后成功」被误记为应用失败）。
 
 | 情况 | record-download | verify | 上传 |
 |------|-----------------|--------|------|
