@@ -88,6 +88,8 @@ def _call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:
                 {"role": "user", "content": user_content},
             ],
             "temperature": 0.2,
+            # Qwen/DashScope: empty content is common when thinking stays on.
+            "enable_thinking": False,
         }
         if use_json_format:
             payload["response_format"] = {"type": "json_object"}
@@ -109,14 +111,34 @@ def _call_llm_to_extract_json(context: dict[str, Any]) -> dict[str, Any] | None:
                 elif isinstance(block, str):
                     parts.append(block)
             raw = "\n".join(parts)
-        return _parse_json_object(str(raw))
+        raw_s = str(raw).strip()
+        if not raw_s:
+            raise RuntimeError("LLM returned empty content")
+        return _parse_json_object(raw_s)
 
-    try:
+    # Retry transient empty/parse failures — a silent None drop loses successful runs.
+    last_err: Exception | None = None
+    for attempt in range(1, 4):
         try:
-            return _do_request(True)
-        except Exception as e1:
-            logger.debug("evomemory_sync: json_object mode failed (%s), retrying without response_format", e1)
-            return _do_request(False)
-    except Exception as e:
-        logger.warning("evomemory_sync: LLM extraction failed: %s", e)
-        return None
+            try:
+                return _do_request(True)
+            except Exception as e1:
+                last_err = e1
+                logger.debug(
+                    "evomemory_sync: json_object mode failed (%s), retrying without response_format",
+                    e1,
+                )
+                return _do_request(False)
+        except Exception as e:
+            last_err = e
+            logger.warning(
+                "evomemory_sync: LLM extraction attempt %d/3 failed: %s",
+                attempt,
+                e,
+            )
+            if attempt < 3:
+                import time as _time
+
+                _time.sleep(attempt)
+    logger.warning("evomemory_sync: LLM extraction failed: %s", last_err)
+    return None

@@ -74,9 +74,23 @@ def main() -> int:
             )
             return 0
 
-        record = _call_llm_to_extract_json(ctx)
+        record = None
+        for extract_attempt in range(1, 4):
+            record = _call_llm_to_extract_json(ctx)
+            if record and isinstance(record, dict):
+                break
+            logger.warning(
+                "offline worker extract_empty ctx_hash=%s attempt=%d/3",
+                ctx_hash,
+                extract_attempt,
+            )
+            if extract_attempt < 3:
+                import time as _time
+
+                _time.sleep(extract_attempt)
         if not record or not isinstance(record, dict):
-            return 0
+            logger.error("offline worker extract_failed ctx_hash=%s", ctx_hash)
+            return 1
         record = normalize_llm_extraction(record)
         if record.get("skip") is True:
             logger.info("offline worker skip ctx_hash=%s", ctx_hash)
