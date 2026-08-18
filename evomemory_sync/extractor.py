@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import re
-from functools import lru_cache
 from typing import Any
 
 import requests
@@ -18,17 +17,14 @@ from .usage_telemetry import record_llm_usage
 logger = logging.getLogger(__name__)
 
 
-@lru_cache(maxsize=1)
 def _extractor_base_url() -> str:
     return _env("EVOMEMORY_EXTRACTOR_BASE_URL", "https://api.siliconflow.cn/v1").rstrip("/")
 
 
-@lru_cache(maxsize=1)
 def _extractor_api_key() -> str:
     return _env("EVOMEMORY_EXTRACTOR_API_KEY") or _env("SILICONFLOW_API_KEY")
 
 
-@lru_cache(maxsize=1)
 def _extractor_model() -> str:
     return _env("EVOMEMORY_EXTRACTOR_MODEL")
 

@@ -1,9 +1,11 @@
-"""Computable ContextDensity for agent experiences (Pareto proposal §3.2).
+"""Computable ContextDensity for agent experiences (Pareto proposal section 3.2).
+
+Experimental helper: not wired into the production extract/upload/search path.
 
 ContextDensity(e) = 1 - H(context|e) / H(context)
 
 All quantities are derived from measurable decision dimensions and optional
-agent trajectories — no LLM subjective "how much do you still need to know".
+agent trajectories; no LLM subjective "how much do you still need to know".
 """
 
 from __future__ import annotations

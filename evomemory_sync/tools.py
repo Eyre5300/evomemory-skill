@@ -307,8 +307,9 @@ def apply_evomemory(
 ) -> str:
     """选择一条候选、创建可信应用并按需获取其完整正文。
 
-    只有适用条件覆盖当前约束且预期收益大于上下文与工具开销时才调用。必须提供
-    具体 fit_reason 和 adaptation_plan；没有合适候选时不要调用，即 abstain。
+    retrieval_proof 必须复制检索结果中的 HUB_APPLY_PROOF（以 v1. 开头的签名），
+    不能用 memory_id 或 [HUB_REF:…] 代替。只有适用条件覆盖当前约束且预期净效用为正时才调用；
+    否则 abstain，不要调用本工具。
     """
     mid = str(memory_id or "").strip().lower()
     proof = str(retrieval_proof or "").strip()
@@ -316,26 +317,38 @@ def apply_evomemory(
     plan = str(adaptation_plan or "").strip()
     if not mid or not proof:
         return (
-            "Application was not recorded: use the memory_id and signed "
-            "HUB_APPLY_PROOF returned by an authenticated search_evomemory call."
+            "应用未记录：请使用 search_evomemory 返回的 memory_id 和已签名的 HUB_APPLY_PROOF"
+            "（不是 HUB_REF，也不是裸 UUID）。"
         )
-    if len(fit) < 12 or len(plan) < 12:
-        return "Application was not recorded: explain the concrete fit and adaptation plan, or abstain."
+    if proof.lower().startswith("[hub_ref:") or (
+        len(proof) == 36 and all(c in "0123456789abcdef-" for c in proof.lower())
+    ):
+        return (
+            "应用未记录：retrieval_proof 不能是 memory_id 或 [HUB_REF:…]。"
+            "请粘贴检索结果中的 HUB_APPLY_PROOF（通常以 v1. 开头）。"
+        )
+    if len(fit) < 24 or len(plan) < 24:
+        return "应用未记录：fit_reason 与 adaptation_plan 须说明为何适用以及如何改写（各至少约一句话），否则请 abstain。"
     try:
         from .agent_tools import headers_or_error
         from .hub_usage import create_application_by_id
 
         headers, err = headers_or_error()
         if not headers:
-            return f"Application was not recorded: {err or 'Hub authentication is required.'}"
+            return f"应用未记录：{err or '需要 Hub 登录（EVOMEMORY_API_TOKEN）。'}"
         application = create_application_by_id(mid, proof, headers=headers)
     except Exception as e:
-        return f"Application was not recorded: Hub application request failed ({type(e).__name__})."
-    if not application:
-        return "Application was not recorded: the Hub rejected or could not verify the retrieval proof."
+        return f"应用未记录：Hub 请求失败（{type(e).__name__}）。"
+    if not application or not application.get("application_id"):
+        extra = ""
+        if isinstance(application, dict) and application.get("error"):
+            extra = f" {application.get('error')}"
+            if application.get("detail"):
+                extra += f" {application.get('detail')}"
+        return f"应用未记录：Hub 拒绝或无法校验 retrieval_proof。{extra}".rstrip()
     app_id = str(application.get("application_id") or "").strip().lower()
     if not app_id:
-        return "Application was not recorded: the Hub response did not contain an application id."
+        return "应用未记录：Hub 响应缺少 application_id。"
     content = application.get("memory_content") or {}
     kind = str(application.get("memory_kind") or "memory")
     sections = [

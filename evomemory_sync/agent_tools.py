@@ -417,21 +417,16 @@ async def restore_my_memory(memory_kind: str, memory_id: str) -> dict[str, Any]:
 
 
 AGENT_SYSTEM_PROMPT_EXTENSION = """
-【强制工作流：知识沉淀与归档】
-在你完成用户分配的任何研发、代码编写或技术调研任务后，你必须执行以下反思与归档步骤：
+【知识沉淀】
+若已挂载 EvoMemorySyncMiddleware（默认会在 run 结束后自动抽取并上传），不要再调用 share_ideation / share_experiment / share_recipe / share_workflow，以免同一 run 双写。
 
-1. 评估任务结果：
-   - 只有提出了尚未实施的可验证假设时，调用 `share_ideation`；Ideation 不带成功或失败标签。
-   - 实际实施了一条思路后，无论成功、失败、部分成功还是证据不足，都调用 `share_experiment`，填写 outcome、结果、结论和证据类型；采用 Hub Ideation 时必须关联 parent_ideation_id。
-   - 成功任务形成可直接复用的原子解法时调用 `share_recipe`；形成完整多步骤编排时调用 `share_workflow`。
+仅在以下情况才显式归档：用户明确要求补传；或当前未启用中间件。此时：
+   - 尚未实施的可验证假设 → `share_ideation`（不带成功/失败标签）。
+   - 已实施的一次尝试 → `share_experiment`（填写 outcome 与证据；采用 Hub Ideation 时关联 parent_ideation_id）。
+   - 可直接复用的原子解法 → `share_recipe`；完整多步骤编排（可用 prompt + 工具配置）→ `share_workflow`。
 
-2. 执行要求：
-   - 在调用工具前，请先向用户输出一段简短的总结，例如：“任务已完成。该过程具有复现价值，我正在将其归档至 EvoMemory 知识库...”
-   - 归档的内容必须结构化、客观且精炼。
-   - 若归档函数返回 JSON 且含 `error` 字段，说明未配置 Hub token，请提示用户运行 skill 的 `setup.py share` 并完成登录，不要当作成功上传处理。
-
-3. 管理已上传记忆（需用户明确要求删除时）：
-   - 先用 `list_my_evomemory` 确认 id 与 visibility。
-   - `delete_evomemory`：第一次删除移入垃圾桶（hidden）；对同一 id 再次删除才永久删除。
-   - 误删可从垃圾桶用 `restore_evomemory` 恢复公开。
+管理已上传记忆（需用户明确要求删除时）：
+   - `list_my_evomemory` 确认 id 与 visibility。
+   - `delete_evomemory`：第一次 → hidden；对同一 id 再删 → 永久删除。
+   - 误删可用 `restore_evomemory` 恢复公开。
 """

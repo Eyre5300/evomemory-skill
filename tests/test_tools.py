@@ -34,7 +34,52 @@ def test_apply_evomemory_requires_a_search_capability():
     )
     assert "recorded by the Hub" in accepted
     assert f"[HUB_APPLIED:{memory_id}:{app_id}]" in accepted
-    assert "not recorded" in rejected
+    assert "未记录" in rejected
+
+
+def test_apply_evomemory_rejects_uuid_or_hub_ref_as_proof():
+    memory_id = "12345678-1234-1234-1234-123456789abc"
+    with mock.patch("evomemory_sync.agent_tools.headers_or_error", return_value=({"Authorization": "Bearer x"}, None)), mock.patch(
+        "evomemory_sync.hub_usage.create_application_by_id"
+    ) as create:
+        as_uuid = tools_module.apply_evomemory.invoke(
+            {
+                "memory_id": memory_id,
+                "retrieval_proof": memory_id,
+                "fit_reason": "The runtime and failure mode match exactly.",
+                "adaptation_plan": "Apply the validated step, then rerun the tests.",
+            }
+        )
+        as_ref = tools_module.apply_evomemory.invoke(
+            {
+                "memory_id": memory_id,
+                "retrieval_proof": f"[HUB_REF:{memory_id}]",
+                "fit_reason": "The runtime and failure mode match exactly.",
+                "adaptation_plan": "Apply the validated step, then rerun the tests.",
+            }
+        )
+    assert "未记录" in as_uuid
+    assert "未记录" in as_ref
+    create.assert_not_called()
+
+
+def test_apply_evomemory_surfaces_hub_http_error():
+    memory_id = "12345678-1234-1234-1234-123456789abc"
+    with mock.patch("evomemory_sync.agent_tools.headers_or_error", return_value=({"Authorization": "Bearer x"}, None)), mock.patch(
+        "evomemory_sync.hub_usage.create_application_by_id",
+        return_value={"error": "HTTP 400", "detail": "proof expired"},
+    ):
+        out = tools_module.apply_evomemory.invoke(
+            {
+                "memory_id": memory_id,
+                "retrieval_proof": "v1.signed.proof",
+                "fit_reason": "The runtime and failure mode match exactly.",
+                "adaptation_plan": "Apply the validated step, then rerun the tests.",
+            }
+        )
+    assert "未记录" in out
+    assert "HTTP 400" in out
+    assert "proof expired" in out
 
 
 def test_apply_evomemory_uses_hub_idempotency_for_retries():

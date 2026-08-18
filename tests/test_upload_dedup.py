@@ -46,6 +46,8 @@ class TestUploadDedup(unittest.TestCase):
 
                 fp = "a" * 64
                 self.assertFalse(u.should_skip_duplicate(fp))
+                # Failed extract/upload must not occupy the slot.
+                self.assertFalse(u.should_skip_duplicate(fp))
                 u.mark_upload_succeeded(fp)
                 self.assertTrue(u.should_skip_duplicate(fp))
             finally:

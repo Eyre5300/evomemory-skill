@@ -1,23 +1,19 @@
 """
-将标准化的 ``EvoWorkflow`` 映射到 Hub ``/memory/workflow/upload`` 的请求体并上传。
+将标准化的 ``EvoWorkflow`` 映射后走 ``upload_memory_record``（含 Curator / 语义去重）。
 
 环境变量与 ``evomemory_sync.agent_tools`` 一致：``EVOMEMORY_API_URL``（可选，覆盖 base）、
 ``EVOMEMORY_API_BASE_URL``、``EVOMEMORY_API_TOKEN`` / ``EVOMEMORY_AGENT_TOKEN``。
-Hub 端负责向量化，无需客户端 embedding 配置。
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Optional
 
-import httpx
-
-from .agent_tools import _base_url, headers_or_error
-from .uploader import tls_verify
+from .agent_tools import headers_or_error
+from .uploader import upload_memory_record
 from .workflow_schema import EvoWorkflow
-
-_DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 
 
 def _strip_none(d: dict[str, Any]) -> dict[str, Any]:
@@ -29,11 +25,8 @@ async def export_and_upload_workflow(
     parent_experiment_id: Optional[str] = None,
     parent_ideation_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    """
-    将标准化的 EvoWorkflow 拆分并映射到后端 API 格式，然后上传到 ``/memory/workflow/upload``。
-    """
+    """将 EvoWorkflow 转为 Hub workflow 草稿并上传。"""
     prompt_templates_str = json.dumps(workflow.prompts, ensure_ascii=False)
-
     tool_config_payload: dict[str, Any] = {
         "version": workflow.version,
         "llm_config": workflow.llm_config.model_dump(),
@@ -43,35 +36,24 @@ async def export_and_upload_workflow(
         "execution_policy": workflow.execution_policy.model_dump(),
         "metadata": workflow.metadata,
     }
-    tool_configuration_str = json.dumps(tool_config_payload, ensure_ascii=False)
-
     payload = _strip_none(
         {
+            "memory_type": "workflow",
             "title": workflow.title,
             "description": workflow.description,
             "prompt_templates": prompt_templates_str,
-            "tool_configuration": tool_configuration_str,
+            "tool_configuration": json.dumps(tool_config_payload, ensure_ascii=False),
             "parent_experiment_id": parent_experiment_id,
             "parent_ideation_id": parent_ideation_id,
         }
     )
-
-    headers, err = headers_or_error()
+    _, err = headers_or_error()
     if err:
         return {"error": err}
-
-    base = _base_url()
-
     try:
-        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, verify=tls_verify()) as client:
-            response = await client.post(
-                f"{base}/memory/workflow/upload",
-                json=payload,
-                headers=headers,
-            )
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        return {"error": f"Hub returned HTTP {e.response.status_code}: {e.response.text[:500]}"}
-    except httpx.RequestError as e:
-        return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
+        out = await asyncio.to_thread(upload_memory_record, payload)
+        if out is None:
+            return {"error": "upload skipped or empty payload"}
+        return out
+    except Exception as e:
+        return {"error": f"Hub upload failed: {type(e).__name__}: {e}"}

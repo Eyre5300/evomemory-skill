@@ -66,7 +66,6 @@ Rules:
 - Make text **more specific** (versions, commands, metrics). Remove fluff. Do not invent facts absent from the draft/trace.
 - If others' cards already solve the same problem and the user has nothing new, choose **skip**.
 - If the draft is low quality, choose **skip** with reason.
-- If `correcting_after_hub_failure` is true: the agent cited Hub experience but the run failed — prefer **update** on similar_own_top1 to merge the fix; only **skip** when the correction adds nothing new; use **create** only when no own card matches.
 
 Examples:
 {"action":"skip","update_memory_id":null,"reason":"Same Flask Blueprint fix already in similar_others_top3"}
@@ -219,7 +218,6 @@ def _call_curator_llm(draft: dict[str, Any], similar_ctx: dict[str, Any]) -> dic
         "similar_own_top1": similar_ctx.get("similar_own_top1"),
         "similar_others_top3": similar_ctx.get("similar_others_top3"),
         "hub_references": draft.get("_hub_references") or [],
-        "correcting_after_hub_failure": bool(draft.get("_correcting_after_hub_failure")),
     }
     # Re-use extractor's HTTP client by temporarily swapping prompt through monkeypatch pattern:
     # duplicate minimal call here importing from extractor internals.
@@ -243,18 +241,31 @@ def _call_curator_llm(draft: dict[str, Any], similar_ctx: dict[str, Any]) -> dic
             {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False, indent=2)},
         ],
         "temperature": 0.15,
+        "enable_thinking": False,
         "response_format": {"type": "json_object"},
     }
-    try:
-        r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=_tls_verify())
-        r.raise_for_status()
-        data = r.json()
-        record_llm_usage("upload_curator", model, data)
-        raw = data["choices"][0]["message"].get("content") or ""
-        return _parse_json_object(str(raw))
-    except Exception as e:
-        logger.warning("upload curator LLM failed: %s", e)
-        return None
+    last_err: Exception | None = None
+    for attempt in range(1, 3):
+        try:
+            r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=_tls_verify())
+            r.raise_for_status()
+            data = r.json()
+            record_llm_usage("upload_curator", model, data)
+            raw = data["choices"][0]["message"].get("content") or ""
+            if isinstance(raw, list):
+                raw = "\n".join(
+                    str(block.get("text", "")) if isinstance(block, dict) else str(block) for block in raw
+                )
+            raw_s = str(raw).strip()
+            if not raw_s:
+                raise RuntimeError("LLM returned empty content")
+            return _parse_json_object(raw_s)
+        except Exception as e:
+            last_err = e
+            logger.warning("upload curator LLM attempt %d/2 failed: %s", attempt, e)
+            payload.pop("response_format", None)
+    logger.warning("upload curator LLM failed: %s", last_err)
+    return None
 
 
 def _validate_decision(

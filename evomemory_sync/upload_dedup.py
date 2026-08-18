@@ -137,26 +137,26 @@ def _prune_old(entries: dict[str, float], now: float, window: float) -> dict[str
 
 
 def should_skip_duplicate(fingerprint: str) -> bool:
-    """True if this fingerprint was recorded as successfully uploaded within the window.
-    Uses check-and-reserve pattern: writes a pending entry immediately to prevent TOCTOU races."""
+    """True only if this fingerprint was recorded after a successful Hub upload.
+
+    Failed extract/upload must not occupy the slot — otherwise a later retry of
+    the same context is silently skipped for the rest of the window.
+    """
     if not dedup_enabled():
         return False
     now = time.time()
     window = _window_seconds()
     with _locked_state_fp() as fp:
         entries = _prune_old(_read_entries_fp(fp), now, window)
-        if fingerprint in entries:
+        hit = fingerprint in entries
+        _write_entries_fp(fp, entries)
+        if hit:
             logger.info(
-                "upload_dedup: skip duplicate context fingerprint=%s… (seen at %s)",
+                "upload_dedup: skip duplicate context fingerprint=%s… (uploaded at %s)",
                 fingerprint[:16],
                 entries[fingerprint],
             )
-            _write_entries_fp(fp, entries)
-            return True
-        # Reserve: mark as in-progress to prevent concurrent workers from skipping
-        entries[fingerprint] = now
-        _write_entries_fp(fp, entries)
-        return False
+        return hit
 
 
 def mark_upload_succeeded(fingerprint: str) -> None:

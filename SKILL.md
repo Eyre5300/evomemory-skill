@@ -193,7 +193,7 @@ from evomemory_sync.agent_tools import (
 
 - 使用与全 skill 一致的 Hub 配置：**`EVOMEMORY_API_BASE_URL`** + **`EVOMEMORY_API_TOKEN`**（由 `scripts/setup.py` 写入 `.env`）。可选别名：**`EVOMEMORY_API_URL`**（覆盖 base）、**`EVOMEMORY_AGENT_TOKEN`**（在未设置 `EVOMEMORY_API_TOKEN` 时作为 Bearer）。
 - 归档与中间件上传均由 **Hub 端完成向量化**，无需配置客户端 embedding。
-- 将 `AGENT_SYSTEM_PROMPT_EXTENSION` 拼进 Agent 系统提示词，可强制任务结束后的反思与归档流程。
+- 将 `AGENT_SYSTEM_PROMPT_EXTENSION` 拼进 Agent 系统提示词。已挂载 `EvoMemorySyncMiddleware` 时，提示词会要求**不要**再调用 `share_*`（避免同一 run 双写）；仅在用户明确要求补传或未启用中间件时才显式归档。
 
 ## 经验是谁在总结？
 
@@ -224,22 +224,27 @@ On `after_agent` / `aafter_agent` it builds a context object from `state["messag
 - **AIMessage** `tool_calls` → code/commands (e.g. `execute` + `command`, or args named `code` / `command`).
 - **ToolMessage** → `status == "error"` and error bodies feed **M_I** hints; successful experiment closure feeds **M_E** hints.
 
-The LLM must output JSON only. Ideation has no outcome; every implemented attempt is an Experiment with `success`, `failure`, `partial`, or `inconclusive`. See `evomemory_sync/extraction_fields.py` (`EXTRACTOR_SYSTEM_PROMPT`).
+The LLM must output JSON only. Prefer **recipe** for a successful atomic fix. Ideation has no outcome; every implemented attempt is an Experiment with `success`, `failure`, `partial`, or `inconclusive`. Workflow is rare (reusable prompt + tool wiring). See `evomemory_sync/extraction_fields.py`.
 
-### Post-run routing（引用经验 / 上传 / 去重）
+### Post-run routing（apply / 上传 / 去重）
 
-**成功**定义（`run_success_flag`）：工具调用无错误；代码/命令输出无运行时错误（非零 exit、Traceback、`[FAILED]` 等）；若任务或输出中出现自检/真值信号（pytest、assert、ground truth、真值等），则须检测到通过或与真值一致，否则视为失败。若本轮曾成功调用 `apply_evomemory`，则**只评估 apply 之后**的工具轨迹（避免 defer 场景下「先独立失败、再应用经验后成功」被误记为应用失败）。
+**成功**定义（`run_success_flag`）：工具调用无错误；代码/命令输出无运行时错误（非零 exit、Traceback、`[FAILED]` 等）；若任务或输出中出现自检/真值信号（pytest、assert、ground truth、真值等），则须检测到通过或与真值一致，否则视为失败。若本轮曾成功调用 `apply_evomemory`，则**只评估 apply 之后**的工具轨迹。
 
-| 情况 | record-download | verify | 上传 |
-|------|-----------------|--------|------|
-| 引用了 Hub 经验 `[HUB_REF:…]`，任务**成功** | ✅ | ✅ | ❌ |
-| 引用了 Hub 经验，任务**失败** | ✅ | ❌ | ❌（仅记录应用后失败，防止失败运行发布伪修正） |
-| **未**引用经验，任务**成功** | — | — | ✅（须经重复检验） |
-| **未**引用经验，任务**失败** | — | — | ❌ |
+路由看的是 **`apply_evomemory` 成功写入的 `[HUB_APPLIED:…]`**，不是检索结果里的 `[HUB_REF:…]`。看见候选不算 download；download/retrieval 在 apply 换 proof 时由 Hub 记账。
 
-凡进入上传路径的记录，一律经 **Agent Curator**（或回退语义去重）：重复过高 **skip**、与自己旧卡相似则 **update**、否则 **create**。
+| 情况 | 应用证据 | 自动上传 |
+|------|----------|----------|
+| 成功 **apply** Hub 经验，任务最终成功 | adaptation success | ❌ 不发新卡 |
+| 成功 **apply** Hub 经验，apply 之后仍失败 | adaptation failure | ❌（禁止把失败 run 发布成伪修正） |
+| 成功 apply 了一条 **Ideation** | 同上 | ✅ 可上传带 `parent_ideation_id` 的 Experiment |
+| **未** apply，任务成功 | — | ✅ Recipe（或抽取器选择的类型），经 Curator/去重 |
+| **未** apply，任务失败 | — | ✅ 仅允许 `outcome=failure/inconclusive` 的 Experiment |
+
+本地指纹去重：**仅在 Hub 上传成功后**记录；抽取/上传失败不会占坑，同一 context 可以重试。
 
 `task_fingerprint` 只是客户端本地 HMAC，用于同一应用结果的隐私化幂等去重；不得用于检索、排序或判断两个实际问题相同。Middleware 从模型供应商的 usage metadata 汇总本次主 Agent Token，与成功/失败和工具调用数一起回传。Hub 将“显式应用后失败”统计为疑似负迁移；没有配对对照时不宣称严格因果。
+
+Worker 日志默认 `~/.evomemory/worker.log`（可用 `EVOMEMORY_WORKER_LOG_FILE` 覆盖）。启动 worker 失败时会删除未投递的临时 JSON。
 
 ## Hub field reference
 

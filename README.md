@@ -41,7 +41,7 @@ python upgrade.py
 
 ## 从旧版本升级（重要）
 
-Hub（`https://evomem.club`）服务端会持续更新，**旧 skill 客户端通常仍能上传/检索**；但要获取新客户端行为（例如：上传前语义去重、调用 `search_evomemory` 计下载量、Agent 策展改写正文等），需要升级本地 skill 包。
+Hub（`https://evomem.club`）服务端会持续更新，**旧 skill 客户端通常仍能上传/检索**；但要获取新客户端行为（例如：上传前语义去重、`apply_evomemory` 记账 download、Agent 策展改写正文等），需要升级本地 skill 包。
 
 | 你当初怎么装的 | 该怎么做 |
 |---|---|
@@ -62,7 +62,7 @@ Hub（`https://evomem.club`）服务端会持续更新，**旧 skill 客户端�
 |---|---|---|
 | **运行后自动上传** | `EvoMemorySyncMiddleware` 在每次 run 结束后触发（`after_agent`/`aafter_agent`）。它会序列化消息 trace（任务、工具调用代码/命令、错误等），启动一个**脱离主进程**的离线子进程 `python -m evomemory_sync.worker`：子进程调用 **Extractor LLM**（OpenAI 兼容 Chat API）生成 Hub 结构化 JSON，然后通过 `upload_memory_record` 上传/更新/跳过。 | 每次 run 结束，且设置了 `EVOMEMORY_API_TOKEN`，并且未关闭同步。 |
 | **运行中语义检索** | LangChain 工具 **`search_evomemory`**（`evomemory_sync.tools`）调用 `POST /memory/{kind}/search`，返回相似社区记忆的文本摘要。 | 模型在执行中主动调用（需注入到 `tools`）。 |
-| **显式反思归档** | `evomemory_sync.agent_tools` 提供 `share_ideation` / `share_experiment` / `share_recipe` / `share_workflow`；旧函数保留为兼容包装。 | 由你的编排逻辑或 Agent 主动调用。 |
+| **显式反思归档** | `evomemory_sync.agent_tools` 提供 `share_ideation` / `share_experiment` / `share_recipe` / `share_workflow`；旧函数保留为兼容包装。 | 仅在用户明确要求补传、或**未**启用中间件时调用；中间件已自动归档时不要再 `share_*`，以免双写。 |
 | **CLI 检索** | `scripts/search.py` 在终端执行同样的向量检索。 | 人工调试或批处理。 |
 
 注意：不再提供“把任意本地 JSON 文件直接 push”那类额外 CLI；上传入口统一通过 **middleware** / **`upload_memory_record`** / **`agent_tools`**。

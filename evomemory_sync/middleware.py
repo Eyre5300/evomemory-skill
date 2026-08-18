@@ -383,18 +383,14 @@ def _resolve_post_run_actions(ctx: dict[str, Any]) -> dict[str, Any]:
     """Decide record-download, adaptation, and upload after an agent run.
 
     Policy (success = tool OK + code OK + validation OK when applicable):
-    - Cited Hub experience → always record-download (success or failure).
-    - Cited + success → record adaptation, no upload.
-    - Cited + failure → record negative adaptation only. An unvalidated failed
-      run must never publish a correction or success-shaped memory.
-    - No citation → run extractor. Failed runs are constrained by the worker to
-      failure/inconclusive Experiment or skip.
+    - Applied Hub experience → record adaptation (post-apply trail). Do not upload a new card.
+    - Applied ideation → may upload an Experiment linked via parent_ideation_id.
+    - No apply → run extractor. Failed runs may only publish failure/inconclusive Experiment.
+    Search impressions do not count as downloads; apply records retrieval on the Hub.
     """
     hub_refs = [str(x).strip() for x in (ctx.get("_hub_references") or []) if str(x).strip()]
-    run_success = bool(ctx.get("run_success_flag", False))
 
-    # search_evomemory already records retrieval when it returns results. Do not
-    # count the same search again after the run, or downloads become inflated.
+    # Downloads are recorded by Hub when apply_evomemory exchanges a proof.
     record_download_ids: list[str] = []
     adaptation_ids = list(hub_refs)
 
@@ -605,6 +601,11 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
                     pass
         except Exception:
             logger.exception("evomemory_sync: failed to launch offline worker")
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
     def after_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
         try:

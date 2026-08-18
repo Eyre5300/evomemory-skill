@@ -64,6 +64,24 @@ def test_pass_pytest_self_check():
     assert out["run_success_flag"] is True
 
 
+def test_search_failed_text_without_execute_does_not_mark_run_failed():
+    """Search bodies mentioning FAILED must not count as execution."""
+    msgs = [
+        HumanMessage(content="look up similar experience"),
+        ToolMessage(
+            content="Candidate mentioned FAILED tests and Exit code: 1 in an old run.",
+            tool_call_id="search-1",
+            name="search_evomemory",
+            status="success",
+        ),
+    ]
+    out = assess_run_outcome(msgs, task="look up similar experience")
+    assert out["has_code_runtime_error_flag"] is False
+    assert out["validation_status"] == "not_applicable"
+    assert out["run_success_flag"] is True
+    assert out["outcome_scope"] == "full_run"
+
+
 def test_search_memory_failure_text_does_not_poison_successful_execution():
     msgs = [
         HumanMessage(content="search experience, then validate with hidden tests"),

@@ -19,7 +19,7 @@ _VALIDATION_HINT_RE = re.compile(
     r"ground\s*truth|真值|expected\s+(?:result|output|value)|"
     r"self[- ]?check|自检|validation|validate|verify\s+result|"
     r"pytest|unittest|assert(?:ion)?|benchmark|"
-    r"accuracy|f1(?:\s*score)?|auc|metric|compare\s+with|与.+一致"
+    r"f1(?:\s*score)?|auc|compare\s+with|与.+一致"
     r")",
     re.IGNORECASE,
 )
@@ -142,9 +142,6 @@ def _execution_tool_bodies(messages: list[BaseMessage]) -> list[str]:
     bodies: list[str] = []
     for tm in _tool_messages(messages):
         if _is_execution_tool_message(tm):
-            bodies.append(_text_content(tm))
-    if not bodies:
-        for tm in _tool_messages(messages):
             bodies.append(_text_content(tm))
     return bodies
 

@@ -91,13 +91,14 @@ def create_application_by_id(
             verify=tls_verify(),
         )
         if r.status_code >= 400:
+            snippet = (r.text or "")[:200]
             logger.debug("create-application %s -> HTTP %s", mid, r.status_code)
-            return None
+            return {"error": f"HTTP {r.status_code}", "detail": snippet}
         data = r.json()
-        return data if data.get("application_id") else None
+        return data if data.get("application_id") else {"error": "missing application_id"}
     except Exception as e:
         logger.debug("create-application failed %s: %s", mid, e)
-        return None
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 def record_adaptation_by_id(

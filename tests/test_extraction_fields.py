@@ -46,6 +46,12 @@ class TestExtractionFields(unittest.TestCase):
         out = m.normalize_llm_extraction({"memory_type": "experiment", "status": "failed"})
         self.assertEqual(out["outcome"], "failure")
 
+    def test_extractor_prompt_does_not_skip_only_for_missing_versions(self) -> None:
+        m = _load_extraction_fields()
+        prompt = m.EXTRACTOR_SYSTEM_PROMPT
+        self.assertIn("do NOT skip solely for missing versions", prompt)
+        self.assertIn("rather than skipping", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

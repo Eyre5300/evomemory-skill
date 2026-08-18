@@ -36,8 +36,10 @@ def load_env() -> None:
 
     for p in candidate_env_paths():
         if p.exists():
-            # override=True so edits to .env take effect on the next load_env() call (long-running agents).
-            load_dotenv(dotenv_path=str(p), override=True)
+            # Root `.env` is first. override=False so scripts/.env cannot clobber it.
+            # Re-calling load_env() still refreshes *unset* keys from disk; already-set
+            # process env (including a previous load of root) wins.
+            load_dotenv(dotenv_path=str(p), override=False)
 
 
 # ---------------------------------------------------------------------------

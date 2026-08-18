@@ -34,13 +34,13 @@ Privacy: The user JSON is **already redacted** client-side before it reaches you
 
 QUALITY STANDARDS (MANDATORY):
 - NO vague descriptions ("worked well", "ran successfully", "some data", "效果很好", "跑通了", "大概", "可能", "还行"). If you cannot be specific, do NOT guess. Output {"skip": true, "reason": "..."} instead.
-- MUST include versions (e.g., Python 3.11, transformers==4.40.0) for all libraries/tools you mention. If versions are not present in the trace, output {"skip": true, "reason": "missing versions"}.
-- NO pseudocode ("first do X, then Y", "先...然后...最后..."). Use real code snippets or exact commands (copy from the trace). If unavailable, output {"skip": true, "reason": "only pseudocode/no actionable commands"}.
+- Prefer library/tool versions when the trace contains them. If versions are absent, write that they were not stated in the trace — do NOT skip solely for missing versions.
+- Prefer real code snippets or exact commands copied from the trace. High-level but specific decisions (what changed and why) are acceptable. Skip only when there is no actionable content at all.
 - If the trace does not meet these standards, output {"skip": true, "reason": "..."} instead of low-quality memory.
 
 Type-specific minimum requirements:
 - Failed experiment: MUST include the concrete error/result, failing path, and conclusion. If missing, output {"skip": true, "reason": "failed experiment lacks error/path/conclusion"}.
-- Experiment: MUST include environment constraints (Python version + key library versions), concrete configuration, an outcome, result summary and conclusion. Quantitative metrics are required when present in the trace; never invent them.
+- Experiment: MUST include an outcome, result summary, conclusion, and the environment that was actually stated (OS, runtime, or libraries). If versions are missing from the trace, say so in environment_constraints rather than skipping. Quantitative metrics are required when present in the trace; never invent them.
 - Workflow: prompt_templates MUST be complete, directly usable system instructions (not "让 AI 写代码" / "do something"). tool_configuration MUST be concrete. If not, output {"skip": true, "reason": "workflow templates/config not directly usable"}.
 - Recipe: ``problem``, ``solution``, ``env_snapshot`` MUST each be a **complete natural-language paragraph** written by you (see F). Cover all semantic dimensions in flowing prose — do NOT output nested JSON objects or field labels like task_type:. **solution** must include decision rationale (why, not only what). If any paragraph is missing or reads like bullet fragments, output {"skip": true, "reason": "recipe paragraphs incomplete or not prose"}.
 
@@ -55,10 +55,10 @@ B) Ideation — a shareable hypothesis that has not itself been tested in this t
 C) Experiment — one concrete validation attempt, whether it succeeded or failed:
 {"memory_type":"experiment","task_description":"","data_summary":"","model_strategy":"","environment_constraints":"","outcome":"success|failure|partial|inconclusive","result_summary":"","metrics":{},"failure_reason":null,"conclusion":"","evidence_type":"not_applicable|agent_self_check|deterministic_test|external_grader|human_review","parent_ideation_id":null,"hardware_requirements":null,"software_dependencies":null}
 
-E) Workflow — reusable prompts + tool wiring (rare). Keys:
+D) Workflow — reusable prompts + tool wiring (rare; only when the durable artifact is an orchestration, not an atomic fix). Keys:
 {"memory_type":"workflow","title":"","description":"","prompt_templates":"","tool_configuration":"","parent_ideation_id":null,"parent_experiment_id":null}
 
-F) Recipe — lightweight atomic experience card (PREFERRED for most agent traces). Use when the trace contains a concrete problem-solution pair that other agents can directly reuse.
+E) Recipe — lightweight atomic experience card (PREFERRED for most agent traces). Use when the trace contains a concrete problem-solution pair that other agents can directly reuse.
 
 ``trigger`` is the public recipe title. Write a short, transferable semantic title that states the underlying problem or capability, normally as “object + operation + key constraint”. It MUST stand on its own outside the originating run. NEVER include benchmark/dataset names, task IDs, problem numbers, case/sample IDs, run IDs, filenames used only by a test harness, or labels such as MBPP, HumanEval, LiveCodeBench, ``task_id=56``, ``problem 12`` or “第 56 题”. Do not copy an evaluation label and do not title a card “solve this task”. For example, use “判断整数是否比其十进制反转值的两倍少一”, not “MBPP task_id=56”. Abstract identity away while preserving the actual goal and decisive constraint.
 

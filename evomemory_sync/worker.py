@@ -74,20 +74,7 @@ def main() -> int:
             )
             return 0
 
-        record = None
-        for extract_attempt in range(1, 4):
-            record = _call_llm_to_extract_json(ctx)
-            if record and isinstance(record, dict):
-                break
-            logger.warning(
-                "offline worker extract_empty ctx_hash=%s attempt=%d/3",
-                ctx_hash,
-                extract_attempt,
-            )
-            if extract_attempt < 3:
-                import time as _time
-
-                _time.sleep(extract_attempt)
+        record = _call_llm_to_extract_json(ctx)
         if not record or not isinstance(record, dict):
             logger.error("offline worker extract_failed ctx_hash=%s", ctx_hash)
             return 1
@@ -110,8 +97,6 @@ def main() -> int:
         hub_refs = ctx.get("_hub_references")
         if hub_refs:
             record["_hub_references"] = hub_refs
-        if ctx.get("_correcting_after_hub_failure"):
-            record["_correcting_after_hub_failure"] = True
         if ctx.get("_agent_metadata"):
             record["_agent_metadata"] = ctx["_agent_metadata"]
 

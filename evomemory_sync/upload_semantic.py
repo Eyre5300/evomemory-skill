@@ -226,7 +226,7 @@ def upload_or_update_memory_record(
             ],
         }
 
-    if action == "update" and update_id and mem_type in ("ideation", "experiment", "recipe"):
+    if action == "update" and update_id and mem_type in ("ideation", "experiment", "recipe", "workflow"):
         url = update_url(mem_type, update_id)
         result = put_json(url, payload, headers)
         result["action"] = "updated"
