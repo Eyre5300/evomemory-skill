@@ -205,6 +205,34 @@ def post_json(url: str, payload: dict[str, Any], timeout: float = 15.0, *, verif
         return r.json()
 
 
+def get_json(url: str, *, token: str, timeout: float = 15.0, verify: bool = True) -> dict[str, Any]:
+    with httpx.Client(timeout=timeout, verify=verify) as client:
+        r = client.get(url, headers={"Authorization": f"Bearer {token}"})
+        if r.status_code >= 400:
+            try:
+                detail = r.json()
+            except Exception:
+                detail = r.text
+            raise RuntimeError(f"{r.status_code} {detail}")
+        return r.json()
+
+
+def _warn_if_email_unverified(base_url: str, token: str, *, verify: bool) -> None:
+    try:
+        me = get_json(f"{base_url.rstrip('/')}/auth/me", token=token, verify=verify)
+    except Exception as e:
+        print(f"Warning: could not check email verification status: {e}")
+        return
+    if me.get("email_verified") is False:
+        print("")
+        print("IMPORTANT: Your Hub email is NOT verified yet.")
+        print("Uploads / votes / stars will fail until you verify.")
+        print("1) Open the verification link sent to your inbox")
+        print("2) Or log in at the Hub and click「重发验证邮件」")
+        print(f"   Hub: {base_url}")
+        print("")
+
+
 def _auth_try_order(mode: str) -> list[str]:
     if mode == "register":
         return ["register"]
@@ -299,7 +327,8 @@ def cmd_share(args):
         "EVOMEMORY_API_TOKEN": token,
     })
     print(f"[OK] Saved EVOMEMORY_API_BASE_URL and EVOMEMORY_API_TOKEN to {path}")
-    print("Now EvoScientist can upload (share) memories to this hub.")
+    _warn_if_email_unverified(working or canonical, token, verify=verify_tls)
+    print("Now EvoScientist can upload (share) memories to this hub (after email is verified).")
 
 
 def cmd_wizard(args):
@@ -361,7 +390,8 @@ def cmd_wizard(args):
         },
     )
     print(f"[OK] Saved EVOMEMORY_API_BASE_URL and EVOMEMORY_API_TOKEN to {path}")
-    print("Now EvoScientist can upload (share) memories to this hub.")
+    _warn_if_email_unverified(working or canonical, token, verify=verify_tls)
+    print("Now EvoScientist can upload (share) memories to this hub (after email is verified).")
 
 
 def main():

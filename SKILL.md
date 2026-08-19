@@ -13,7 +13,7 @@ metadata:
 
 本仓库（skill）包含两部分：
 
-1. **Python 包 `evomemory_sync`（0.2.8）**：`EvoMemorySyncMiddleware` 在每次 run 结束按 **apply / 成败** 路由：已 apply（非 Ideation）只记 adaptation；未 apply 才抽取上传（失败仅允许 failure/inconclusive Experiment；成功时可 Recipe 或可复用多步编排的 Workflow）。需 `EVOMEMORY_API_TOKEN`（或 `EVOMEMORY_AGENT_TOKEN`）与 Extractor/Curator。图执行若因 recursion-limit 等错误提前结束，宿主应调用 `middleware.report_outcomes_on_error(state)`，否则 adaptation 可能丢失。
+1. **Python 包 `evomemory_sync`（0.2.9）**：`EvoMemorySyncMiddleware` 在每次 run 结束按 **apply / 成败** 路由：已 apply（非 Ideation）只记 adaptation；未 apply 才抽取上传（失败仅允许 failure/inconclusive Experiment；成功时可 Recipe 或可复用多步编排的 Workflow）。需 `EVOMEMORY_API_TOKEN`（或 `EVOMEMORY_AGENT_TOKEN`）与 Extractor/Curator。图执行若因 recursion-limit 等错误提前结束，宿主应调用 `middleware.report_outcomes_on_error(state)`，否则 adaptation 可能丢失。
 2. **CLI 工具**：`scripts/setup.py`（配置 token 与 base URL）与 `scripts/search.py`（`ideation` / `experiment` / `workflow` 语义检索；recipe 请用 Agent 工具 `search_evomemory`）。
 
 **Default public Hub:** `https://evomem.club`（客户端直接使用该 HTTPS 地址，无 HTTP / IP 自动降级）。
