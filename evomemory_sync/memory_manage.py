@@ -112,6 +112,7 @@ def trash_or_delete_memory(
     memory_id: str,
     *,
     headers: dict[str, str],
+    confirm_permanent: bool = False,
 ) -> dict[str, Any]:
     """First delete → hidden (trash). Second delete on hidden → permanent DELETE."""
     kind = validate_memory_kind(memory_kind)
@@ -129,6 +130,16 @@ def trash_or_delete_memory(
     base = get_base_url()
 
     if visibility == "hidden":
+        if not confirm_permanent:
+            return {
+                "status": "error",
+                "error": (
+                    "this memory is already in trash; permanent delete requires "
+                    "confirm_permanent=true"
+                ),
+                "memory_kind": kind,
+                "memory_id": mid,
+            }
         r = requests.delete(
             f"{base}/memory/{kind}/{mid}",
             headers=_auth_headers(headers),

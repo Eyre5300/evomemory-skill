@@ -32,6 +32,7 @@ import re as _re
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
 from .env_loader import load_env
 from .hub_url import get_base_url
+from .sanitize import sanitize_context
 from .uploader import env, tls_verify, upload_memory_record
 
 try:
@@ -126,7 +127,7 @@ async def share_ideation(
         "validation_plan": validation_plan,
     }
     try:
-        result = await asyncio.to_thread(upload_memory_record, payload)
+        result = await asyncio.to_thread(upload_memory_record, sanitize_context(payload))
         return result if result is not None else {"error": "upload skipped or empty payload"}
     except Exception as e:
         return {"error": f"Hub upload failed: {type(e).__name__}: {e}"}
@@ -167,7 +168,7 @@ async def share_experiment(
         "parent_ideation_id": parent_ideation_id,
     })
     try:
-        result = await asyncio.to_thread(upload_memory_record, payload)
+        result = await asyncio.to_thread(upload_memory_record, sanitize_context(payload))
         return result if result is not None else {"error": "upload skipped or empty payload"}
     except Exception as e:
         return {"error": f"Hub upload failed: {type(e).__name__}: {e}"}
@@ -233,7 +234,7 @@ async def share_recipe(
         }
     )
     try:
-        out = await asyncio.to_thread(upload_memory_record, payload)
+        out = await asyncio.to_thread(upload_memory_record, sanitize_context(payload))
         if out is None:
             return {"error": "upload skipped or empty payload"}
         return out
@@ -265,7 +266,7 @@ async def share_workflow(
         }
     )
     try:
-        out = await asyncio.to_thread(upload_memory_record, payload)
+        out = await asyncio.to_thread(upload_memory_record, sanitize_context(payload))
         if out is None:
             return {"error": "upload skipped or empty payload"}
         return out
@@ -359,7 +360,12 @@ async def patch_workflow_parent_links(
         return {"error": f"Hub request failed: {type(e).__name__}: {e}"}
 
 
-async def delete_my_memory(memory_kind: str, memory_id: str) -> dict[str, Any]:
+async def delete_my_memory(
+    memory_kind: str,
+    memory_id: str,
+    *,
+    confirm_permanent: bool = False,
+) -> dict[str, Any]:
     """Trash-then-delete: first call hides; second call permanently deletes."""
     headers, err = headers_or_error()
     if err:
@@ -367,7 +373,13 @@ async def delete_my_memory(memory_kind: str, memory_id: str) -> dict[str, Any]:
     try:
         from .memory_manage import trash_or_delete_memory
 
-        return await asyncio.to_thread(trash_or_delete_memory, memory_kind, memory_id, headers=headers)
+        return await asyncio.to_thread(
+            trash_or_delete_memory,
+            memory_kind,
+            memory_id,
+            headers=headers,
+            confirm_permanent=bool(confirm_permanent),
+        )
     except ValueError as e:
         return {"error": str(e)}
     except Exception as e:
@@ -428,6 +440,6 @@ AGENT_SYSTEM_PROMPT_EXTENSION = """
 
 管理已上传记忆（需用户明确要求删除时）：
    - `list_my_evomemory` 确认 id 与 visibility。
-   - `delete_evomemory`：第一次 → hidden；对同一 id 再删 → 永久删除。
+   - `delete_evomemory`：第一次 → hidden；对同一 id 再删须 `confirm_permanent=true` → 永久删除。
    - 误删可用 `restore_evomemory` 恢复公开。
 """

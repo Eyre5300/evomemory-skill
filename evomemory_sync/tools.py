@@ -11,7 +11,7 @@ import requests
 from langchain_core.tools import tool
 
 from .constants import BROWSER_UA, DEFAULT_ACCEPT, DEFAULT_ACCEPT_LANGUAGE
-from .env_loader import env as _env, load_env
+from .env_loader import env as _env, env_bool as _env_bool, load_env
 from .hub_url import get_base_url
 from .uploader import tls_verify
 
@@ -398,7 +398,12 @@ def apply_evomemory(
     if str(meta.get("recommended_action") or "").lower() == "avoid" and not force_apply:
         return (
             "应用未记录：该候选 recommended_action=avoid，请 abstain。"
-            "若用户明确要求仍要试用，请设 force_apply=true。"
+            "仅管理员可在 Hub 上 force_apply；客户端需设 EVOMEMORY_ALLOW_FORCE_APPLY=1 才会发送该标志。"
+        )
+    if force_apply and not _env_bool("EVOMEMORY_ALLOW_FORCE_APPLY", False):
+        return (
+            "应用未记录：force_apply 已禁用。"
+            "仅在确需覆盖负迁移门闩且账号为 Hub 管理员时，设置环境变量 EVOMEMORY_ALLOW_FORCE_APPLY=1。"
         )
     if len(fit) < 24 or len(plan) < 24:
         return "应用未记录：fit_reason 与 adaptation_plan 须说明为何适用以及如何改写（各至少约一句话），否则请 abstain。"
@@ -451,11 +456,16 @@ def _require_auth_headers() -> tuple[dict[str, str] | None, str | None]:
 
 
 @tool
-def delete_evomemory(memory_kind: str, memory_id: str) -> str:
+def delete_evomemory(
+    memory_kind: str,
+    memory_id: str,
+    confirm_permanent: bool = False,
+) -> str:
     """删除自己在 EvoMemory Hub 上发布的记忆（仅作者）。
 
     第一次删除：移入垃圾桶（visibility=hidden，社区不可见，可在 dashboard 恢复）。
-    对已在垃圾桶中的同一 ID 再次删除：永久删除，不可恢复。
+    对已在垃圾桶中的同一 ID 再次删除：永久删除，不可恢复——此时必须传
+    confirm_permanent=true。
     `memory_kind` 为 ideation / experiment / workflow / recipe。"""
 
     headers, err = _require_auth_headers()
@@ -464,7 +474,12 @@ def delete_evomemory(memory_kind: str, memory_id: str) -> str:
     try:
         from .memory_manage import trash_or_delete_memory
 
-        out = trash_or_delete_memory(memory_kind, memory_id, headers=headers)
+        out = trash_or_delete_memory(
+            memory_kind,
+            memory_id,
+            headers=headers,
+            confirm_permanent=bool(confirm_permanent),
+        )
         if out.get("status") == "error":
             return f"删除失败：{out.get('error')}"
         return str(out.get("message") or out)

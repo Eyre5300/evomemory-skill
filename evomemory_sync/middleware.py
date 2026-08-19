@@ -45,6 +45,16 @@ def _maybe_load_dotenv() -> None:
 def _worker_subprocess_env() -> dict[str, str]:
     """Subset of parent env for the offline worker (avoid leaking unrelated host secrets)."""
     prefixes = ("EVOMEMORY_", "LC_")
+    # Never pass setup credentials / force-apply flags into the extractor worker.
+    deny = frozenset(
+        {
+            "EVOMEMORY_SETUP_EMAIL",
+            "EVOMEMORY_SETUP_PASSWORD",
+            "EVOMEMORY_ALLOW_FORCE_APPLY",
+            "EVOMEMORY_INSECURE",
+            "EVOMEMORY_SYNC_SEND_RAW_CONTEXT",
+        }
+    )
     extra = frozenset(
         {
             "LANG",
@@ -74,7 +84,11 @@ def _worker_subprocess_env() -> dict[str, str]:
     )
     out: dict[str, str] = {}
     for k, v in os.environ.items():
-        if isinstance(v, str) and (k in extra or k.startswith(prefixes)):
+        if not isinstance(v, str):
+            continue
+        if k in deny:
+            continue
+        if k in extra or k.startswith(prefixes):
             out[k] = v
     # Ensure `python -m evomemory_sync.worker` can import the package even when
     # the parent process relied on sys.path inserts rather than a site install.
