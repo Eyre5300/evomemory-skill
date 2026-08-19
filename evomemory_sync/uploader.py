@@ -33,10 +33,17 @@ def _max_upload_body_bytes() -> int:
         return 524288
 
 
+def hub_bearer_token() -> str:
+    """Bearer token for Hub writes/reads. ``EVOMEMORY_API_TOKEN`` wins; ``EVOMEMORY_AGENT_TOKEN`` is fallback."""
+    return (env("EVOMEMORY_API_TOKEN") or env("EVOMEMORY_AGENT_TOKEN") or "").strip()
+
+
 def hub_headers() -> dict[str, str]:
-    token = env("EVOMEMORY_API_TOKEN")
+    token = hub_bearer_token()
     if not token:
-        raise RuntimeError("EVOMEMORY_API_TOKEN is not set")
+        raise RuntimeError(
+            "EVOMEMORY_API_TOKEN (or EVOMEMORY_AGENT_TOKEN) is not set"
+        )
     return {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -81,16 +88,38 @@ def json_to_experiment_payload(data: dict[str, Any]) -> dict[str, Any]:
     model_s = str(data.get("model_summary") or data.get("model_strategy") or "").strip()
     env_s = str(data.get("environment_constraints") or data.get("environment") or "").strip()
     proposal_context = proposal or "(untitled experiment)"
+    raw_outcome = str(data.get("outcome") or "inconclusive").strip().lower()
+    outcome = {
+        "failed": "failure",
+        "fail": "failure",
+        "failure": "failure",
+        "successful": "success",
+        "completed": "success",
+        "success": "success",
+        "partial": "partial",
+        "inconclusive": "inconclusive",
+    }.get(raw_outcome, "inconclusive")
+    result_summary = str(data.get("result_summary") or data.get("result") or "(not recorded)").strip()
+    conclusion = str(data.get("conclusion") or "(not recorded)").strip()
+    failure_reason = str(data.get("failure_reason") or "").strip() or None
+    if outcome == "failure" and not failure_reason:
+        failure_reason = (
+            result_summary
+            if result_summary and result_summary != "(not recorded)"
+            else conclusion
+            if conclusion and conclusion != "(not recorded)"
+            else "failure recorded without a detailed reason"
+        )
     out: dict[str, Any] = {
         "proposal_context": proposal_context,
         "data_strategy": data_s or "(unknown)",
         "model_strategy": model_s or "(unknown)",
         "environment": env_s or "(none)",
-        "outcome": str(data.get("outcome") or "inconclusive").strip().lower(),
-        "result_summary": str(data.get("result_summary") or data.get("result") or "(not recorded)").strip(),
+        "outcome": outcome,
+        "result_summary": result_summary,
         "metrics": data.get("metrics") if isinstance(data.get("metrics"), dict) else {},
-        "failure_reason": str(data.get("failure_reason") or "").strip() or None,
-        "conclusion": str(data.get("conclusion") or "(not recorded)").strip(),
+        "failure_reason": failure_reason,
+        "conclusion": conclusion,
         "evidence_type": str(data.get("evidence_type") or "not_applicable").strip(),
     }
     pid = data.get("parent_ideation_id") or data.get("parent_ideation")

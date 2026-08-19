@@ -64,7 +64,8 @@ def transferable_recipe_title(trigger: str, problem: str, *, max_length: int = 1
         fallback = _GENERIC_PROBLEM_LEAD_RE.sub("", fallback.strip())
         title = _strip_evaluation_identity(fallback)
     title = re.sub(r"\s+", " ", title).strip()
-    return title[:max_length].rstrip(" .。") or "可复用问题解决经验"
+    # Hub rejects titles shorter than 10 characters (unless allowlisted).
+    return title[:max_length].rstrip(" .。") or "可复用的问题解决经验"
 
 
 def default_agent_creator(metadata: dict[str, Any] | None = None) -> str:

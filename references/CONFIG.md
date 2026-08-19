@@ -56,7 +56,7 @@ python scripts/setup.py wizard
 | `EVOMEMORY_API_TOKEN` | 写入必需 | - | JWT access token（上传/删除/改可见性等需要） |
 | `EVOMEMORY_SETUP_EMAIL` | No | - | Used by `scripts/setup.py` share / `install.py` instead of prompting (pair with password; for CI) |
 | `EVOMEMORY_SETUP_PASSWORD` | No | - | Used with `EVOMEMORY_SETUP_EMAIL` for non-interactive register/login |
-| `EVOMEMORY_AGENT_TOKEN` | No | - | Optional bearer token used only if `EVOMEMORY_API_TOKEN` is unset (e.g. dedicated agent key) |
+| `EVOMEMORY_AGENT_TOKEN` | No | - | Optional bearer used when `EVOMEMORY_API_TOKEN` is unset. Applies to search, apply, middleware sync, and uploads. |
 | `EVOMEMORY_AGENT_MODEL` | No | same as `EVOMEMORY_EXTRACTOR_MODEL` | Agent 模型名，写入经验卡 `env_snapshot.creator` |
 | `EVOMEMORY_AGENT_INSTANCE_ID` | No | - | Agent 实例/会话 ID（如 thread id），与模型名拼成 `creator` |
 | `EVOMEMORY_API_TIMEOUT_SECONDS` | No | 30 | Request timeout |

@@ -63,6 +63,20 @@ class TestJsonToIdeationPayload:
 
 
 class TestJsonToExperimentPayload:
+    def test_outcome_alias_failed_and_failure_reason_filled(self):
+        data = {
+            "memory_type": "experiment",
+            "task_description": "try fix",
+            "data_summary": "n/a",
+            "model_strategy": "edit",
+            "environment_constraints": "py310",
+            "outcome": "failed",
+            "result_summary": "AssertionError on edge case",
+            "conclusion": "reject approach",
+        }
+        result = json_to_experiment_payload(data)
+        assert result["outcome"] == "failure"
+        assert result["failure_reason"] == "AssertionError on edge case"
     def test_success_experiment(self):
         data = {
             "memory_type": "experiment",
@@ -120,7 +134,7 @@ class TestJsonToRecipePayload:
     def test_defaults_for_missing(self):
         data = {"memory_type": "recipe"}
         result = json_to_recipe_payload(data)
-        assert result["trigger"] == "可复用问题解决经验"
+        assert result["trigger"] == "可复用的问题解决经验"
         assert result["problem"] == "(unknown problem)"
         assert result["solution"] == "(unknown solution)"
 

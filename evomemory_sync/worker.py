@@ -22,12 +22,18 @@ logger = logging.getLogger("evomemory_sync.worker")
 
 def _record_allowed_for_outcome(ctx: dict, record: dict) -> bool:
     """Never publish an unvalidated success-shaped memory from a failed run."""
-    if ctx.get("_parent_ideation_id"):
-        return str(record.get("memory_type") or "").strip().lower() == "experiment"
-    if bool(ctx.get("run_success_flag", False)):
-        return True
     memory_type = str(record.get("memory_type") or "").strip().lower()
     outcome = str(record.get("outcome") or "").strip().lower()
+    run_ok = bool(ctx.get("run_success_flag", False))
+    if ctx.get("_parent_ideation_id"):
+        # Applied Ideation may only yield an Experiment; failed runs cannot mint success.
+        if memory_type != "experiment":
+            return False
+        if run_ok:
+            return True
+        return outcome in {"failure", "inconclusive", "partial"}
+    if run_ok:
+        return True
     return memory_type == "experiment" and outcome in {"failure", "inconclusive"}
 
 
@@ -106,7 +112,19 @@ def main() -> int:
         last_err = None
         for attempt in range(1, 4):
             try:
-                upload_memory_record(record)
+                result = upload_memory_record(record)
+                # Curator/semantic skip returns {"status":"skipped"} without raising —
+                # do not occupy the fingerprint window, so a later retry can still publish.
+                if result is None:
+                    logger.info("offline worker upload_none ctx_hash=%s", ctx_hash)
+                    return 0
+                if isinstance(result, dict) and str(result.get("status") or "").lower() == "skipped":
+                    logger.info(
+                        "offline worker upload_skipped ctx_hash=%s reason=%s",
+                        ctx_hash,
+                        result.get("reason") or result.get("skip_category") or "skipped",
+                    )
+                    return 0
                 mark_upload_succeeded(fp)
                 logger.info("offline worker done ctx_hash=%s", ctx_hash)
                 return 0

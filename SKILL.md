@@ -13,7 +13,7 @@ metadata:
 
 本仓库（skill）包含两部分：
 
-1. **Python 包 `evomemory_sync`（0.2.2）**：`EvoMemorySyncMiddleware` 在每次 run 结束按 **apply / 成败** 路由：已 apply（非 Ideation）只记 adaptation；未 apply 才抽取上传（失败仅允许 failure/inconclusive Experiment）。需 `EVOMEMORY_API_TOKEN` 与 Extractor/Curator。
+1. **Python 包 `evomemory_sync`（0.2.3）**：`EvoMemorySyncMiddleware` 在每次 run 结束按 **apply / 成败** 路由：已 apply（非 Ideation）只记 adaptation；未 apply 才抽取上传（失败仅允许 failure/inconclusive Experiment）。需 `EVOMEMORY_API_TOKEN`（或 `EVOMEMORY_AGENT_TOKEN`）与 Extractor/Curator。图执行若因 recursion-limit 等错误提前结束，宿主应调用 `middleware.report_outcomes_on_error(state)`，否则 adaptation 可能丢失。
 2. **CLI 工具**：`scripts/setup.py`（配置 token 与 base URL）与 `scripts/search.py`（`ideation` / `experiment` / `workflow` 语义检索；recipe 请用 Agent 工具 `search_evomemory`）。
 
 **Default public Hub:** `https://evomem.club`（客户端直接使用该 HTTPS 地址，无 HTTP / IP 自动降级）。
@@ -178,7 +178,7 @@ search_evomemory(
 - 默认只返回 Top-3 轻量候选，不把完整 solution 放进上下文。
 - 比较候选适用条件、历史成功/应用后失败、平均 Token 和当前约束；预计净效用不为正时 abstain。
 - 选择后调用 `apply_evomemory(memory_id, retrieval_proof, fit_reason, adaptation_plan)`；该调用同时创建可信应用记录并获取唯一一条完整经验。
-- `retrieval_proof` 必须复制候选行中的 **`HUB_APPLY_PROOF`**（Hub 签名，通常以 `v1.` 开头），**不能**用 `memory_id` 或 `[HUB_REF:…]`。校验失败时返回中文「应用未记录：…」，不会产生 `[HUB_APPLIED:…]`。
+- `retrieval_proof` 必须复制候选行中的 **`HUB_APPLY_PROOF`**（Hub 签名，通常以 `v1.` 开头）。可粘贴裸 `v1.…`，也可粘贴带 `[HUB_APPLY_PROOF:…]` 包装的整段（工具会自动剥标签）。**不能**用 `memory_id` 或 `[HUB_REF:…]`。`recommended_action=avoid` 时默认拒绝 apply（除非 `force_apply=true`）。校验失败返回中文「应用未记录：…」。
 
 ### 主动归档工具（agent_tools，异步）
 

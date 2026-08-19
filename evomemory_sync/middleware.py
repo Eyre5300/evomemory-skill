@@ -75,15 +75,27 @@ def _worker_subprocess_env() -> dict[str, str]:
     for k, v in os.environ.items():
         if isinstance(v, str) and (k in extra or k.startswith(prefixes)):
             out[k] = v
+    # Ensure `python -m evomemory_sync.worker` can import the package even when
+    # the parent process relied on sys.path inserts rather than a site install.
+    pkg_root = str(Path(__file__).resolve().parent.parent)
+    existing = out.get("PYTHONPATH", "")
+    parts = [p for p in existing.split(os.pathsep) if p] if existing else []
+    if pkg_root not in parts:
+        parts.insert(0, pkg_root)
+    out["PYTHONPATH"] = os.pathsep.join(parts)
     return out
 
 
 def _sync_enabled() -> bool:
     if _env_bool("EVOMEMORY_SYNC_ENABLED", True) is False:
         return False
-    token = os.getenv("EVOMEMORY_API_TOKEN", "").strip()
+    from .uploader import hub_bearer_token
+
+    token = hub_bearer_token()
     if not token:
-        logger.debug("evomemory_sync: EVOMEMORY_API_TOKEN missing, middleware idle")
+        logger.debug(
+            "evomemory_sync: EVOMEMORY_API_TOKEN/EVOMEMORY_AGENT_TOKEN missing, middleware idle"
+        )
         return False
     return True
 
@@ -586,9 +598,10 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
             }
 
             if os.name == "nt":
-                popen_kwargs["creationflags"] = (
-                    subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-                )
+                # Avoid DETACHED_PROCESS: it breaks inherited stdio handles under
+                # Job Objects (Cursor/CI) and can silently kill the worker.
+                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+                popen_kwargs["close_fds"] = False
             else:
                 popen_kwargs["start_new_session"] = True
 

@@ -116,16 +116,58 @@ def test_apply_evomemory_uses_hub_idempotency_for_retries():
 
 class TestOptionalAuthHeaders:
     def test_with_token(self):
-        with mock.patch.object(tools_module, "_env", return_value="test-token-123"):
+        with mock.patch("evomemory_sync.uploader.hub_bearer_token", return_value="test-token-123"):
             headers = tools_module._optional_auth_headers()
             assert headers["Authorization"] == "Bearer test-token-123"
             assert "User-Agent" in headers
             assert "Content-Type" in headers
 
     def test_without_token(self):
-        with mock.patch.object(tools_module, "_env", return_value=""):
+        with mock.patch("evomemory_sync.uploader.hub_bearer_token", return_value=""):
             headers = tools_module._optional_auth_headers()
             assert "Authorization" not in headers
+
+
+def test_normalize_retrieval_proof_strips_wrapper():
+    raw = "[HUB_APPLY_PROOF:v1.payload.signature]"
+    assert tools_module._normalize_retrieval_proof(raw) == "v1.payload.signature"
+    assert tools_module._normalize_retrieval_proof("v1.payload.signature") == "v1.payload.signature"
+
+
+def test_apply_evomemory_accepts_wrapped_proof():
+    memory_id = "12345678-1234-1234-1234-123456789abc"
+    app_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    with mock.patch("evomemory_sync.agent_tools.headers_or_error", return_value=({"Authorization": "Bearer x"}, None)), mock.patch(
+        "evomemory_sync.hub_usage.create_application_by_id",
+        return_value={"application_id": app_id, "memory_kind": "recipe"},
+    ) as create:
+        out = tools_module.apply_evomemory.invoke(
+            {
+                "memory_id": memory_id,
+                "retrieval_proof": "[HUB_APPLY_PROOF:v1.signed.proof]",
+                "fit_reason": "The runtime and failure mode match exactly.",
+                "adaptation_plan": "Apply the validated step, then rerun the tests.",
+            }
+        )
+    assert "recorded by the Hub" in out
+    assert create.call_args.args[1] == "v1.signed.proof"
+
+
+def test_apply_evomemory_refuses_avoid_without_force():
+    memory_id = "12345678-1234-1234-1234-123456789abc"
+    tools_module._LAST_CANDIDATE_META[memory_id] = {"recommended_action": "avoid"}
+    with mock.patch("evomemory_sync.hub_usage.create_application_by_id") as create:
+        out = tools_module.apply_evomemory.invoke(
+            {
+                "memory_id": memory_id,
+                "retrieval_proof": "v1.signed.proof",
+                "fit_reason": "The runtime and failure mode match exactly.",
+                "adaptation_plan": "Apply the validated step, then rerun the tests.",
+            }
+        )
+    assert "avoid" in out
+    create.assert_not_called()
+    tools_module._LAST_CANDIDATE_META.pop(memory_id, None)
 
 
 class TestTruncatePreviewText:

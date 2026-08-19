@@ -116,13 +116,35 @@ def normalize_llm_extraction(raw: dict[str, Any]) -> dict[str, Any]:
         if not ds and out.get("data_strategy") is not None and str(out.get("data_strategy")).strip():
             out["data_summary"] = str(out.get("data_strategy")).strip()
         legacy_status = str(out.get("status") or "").strip().lower()
-        if not str(out.get("outcome") or "").strip() and legacy_status:
+        raw_outcome = str(out.get("outcome") or "").strip().lower()
+        if raw_outcome:
+            out["outcome"] = {
+                "failed": "failure",
+                "fail": "failure",
+                "failure": "failure",
+                "successful": "success",
+                "completed": "success",
+                "success": "success",
+                "partial": "partial",
+                "inconclusive": "inconclusive",
+            }.get(raw_outcome, raw_outcome)
+        elif legacy_status:
             out["outcome"] = {
                 "completed": "success", "successful": "success", "failed": "failure"
             }.get(legacy_status, "inconclusive")
         out.setdefault("result_summary", str(out.get("result") or "").strip() or "(not recorded)")
         out.setdefault("metrics", {})
         out.setdefault("conclusion", str(out.get("result_summary") or "").strip() or "(not recorded)")
+        if str(out.get("outcome") or "") == "failure" and not str(out.get("failure_reason") or "").strip():
+            summary = str(out.get("result_summary") or "").strip()
+            conclusion = str(out.get("conclusion") or "").strip()
+            out["failure_reason"] = (
+                summary
+                if summary and summary != "(not recorded)"
+                else conclusion
+                if conclusion and conclusion != "(not recorded)"
+                else "failure recorded without a detailed reason"
+            )
         out.setdefault("evidence_type", "agent_self_check")
 
     if mt == "workflow":

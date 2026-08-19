@@ -189,8 +189,9 @@ def resolve_working_hub_base_url_cached(
 
 
 def get_base_url() -> str:
-    """Resolve Hub base URL from ``EVOMEMORY_API_BASE_URL`` (same contract as legacy ``uploader.get_base_url``)."""
-    base = _env_hub("EVOMEMORY_API_BASE_URL", DEFAULT_PUBLIC_HUB).strip()
+    """Resolve Hub base URL from ``EVOMEMORY_API_URL`` (override) or ``EVOMEMORY_API_BASE_URL``."""
+    override = _env_hub("EVOMEMORY_API_URL", "").strip()
+    base = override or _env_hub("EVOMEMORY_API_BASE_URL", DEFAULT_PUBLIC_HUB).strip()
     if not base:
         base = DEFAULT_PUBLIC_HUB
     return resolve_working_hub_base_url_cached(base, default=DEFAULT_PUBLIC_HUB)

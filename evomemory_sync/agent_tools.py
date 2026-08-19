@@ -65,16 +65,14 @@ def _base_url() -> str:
 
 def headers_or_error() -> tuple[dict[str, str] | None, str | None]:
     """Return ``(headers, None)`` or ``(None, error_message)`` if no bearer token is configured."""
-    token = env("EVOMEMORY_API_TOKEN") or env("EVOMEMORY_AGENT_TOKEN")
-    if not token:
+    from .uploader import hub_headers, hub_bearer_token
+
+    if not hub_bearer_token():
         return None, _MISSING_TOKEN_MSG
-    return {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "User-Agent": BROWSER_UA,
-        "Accept": DEFAULT_ACCEPT,
-        "Accept-Language": DEFAULT_ACCEPT_LANGUAGE,
-    }, None
+    try:
+        return hub_headers(), None
+    except RuntimeError as e:
+        return None, str(e)
 
 
 def get_headers() -> dict[str, str]:

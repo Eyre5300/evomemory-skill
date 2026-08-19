@@ -70,15 +70,10 @@ def _problem_profile(
     return "\n".join(lines)
 
 
-def _bounded_output(text: str, env_name: str, default: int) -> str:
-    budget = _positive_int_env(env_name, default, minimum=800, maximum=20_000)
-    if len(text) <= budget:
-        return text
-    return text[:budget].rstrip() + "\n…[EvoMemory context budget reached]"
-
-
 def _optional_auth_headers() -> Dict[str, str]:
-    token = _env("EVOMEMORY_API_TOKEN", "")
+    from .uploader import hub_bearer_token
+
+    token = hub_bearer_token()
     headers: Dict[str, str] = {
         "User-Agent": BROWSER_UA,
         "Accept": DEFAULT_ACCEPT,
@@ -88,6 +83,37 @@ def _optional_auth_headers() -> Dict[str, str]:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
+
+
+# Last search recommendations by memory id (lowercased). Used so apply can refuse avoid.
+_LAST_CANDIDATE_META: Dict[str, Dict[str, str]] = {}
+
+
+def _normalize_retrieval_proof(raw: str) -> str:
+    """Accept bare v1.… or the display wrapper [HUB_APPLY_PROOF:v1.…]."""
+    proof = str(raw or "").strip()
+    if not proof:
+        return ""
+    lower = proof.lower()
+    if lower.startswith("[hub_apply_proof:") and "]" in lower:
+        start = lower.find("[hub_apply_proof:") + len("[hub_apply_proof:")
+        end = proof.rfind("]")
+        if end > start:
+            proof = proof[start:end].strip()
+    return proof.strip()
+
+
+def _bounded_output(text: str, env_name: str, default: int) -> str:
+    budget = _positive_int_env(env_name, default, minimum=800, maximum=20_000)
+    if len(text) <= budget:
+        return text
+    proof_lines = [ln for ln in text.splitlines() if "HUB_APPLY_PROOF:" in ln]
+    head = text[:budget].rstrip() + "\n…[EvoMemory context budget reached]"
+    # Re-attach any proof lines that the hard cut may have destroyed.
+    for ln in proof_lines:
+        if ln not in head:
+            head = head + "\n" + ln
+    return head
 
 
 def _truncate_preview_text(text: str, max_chars: int) -> str:
@@ -135,15 +161,33 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
         hub_proof = str(item.get("hub_retrieval_proof") or "").strip()
         proof_tag = f" [HUB_APPLY_PROOF:{hub_proof}]" if hub_proof else ""
         id_line = f"ID: {mem_id} [HUB_REF:{mem_id}]{proof_tag}"
+        action = str(item.get("recommended_action") or "").strip().lower()
+        mid_key = mem_id.strip().lower()
+        if mid_key and mid_key != "unknown":
+            _LAST_CANDIDATE_META[mid_key] = {
+                "recommended_action": action,
+                "hub_retrieval_proof": hub_proof,
+            }
         lifecycle = str(item.get("lifecycle_state") or "candidate")
         if kind == "ideation":
             title = str(item.get("title") or item.get("goal") or "(untitled)")
-            core = str(item.get("core_idea") or item.get("core idea") or "")
-            requirements = str(item.get("requirements") or item.get("do_not_repeat_notes") or item.get("countermeasures") or "")
+            core = str(
+                item.get("core_idea_summary")
+                or item.get("core_idea")
+                or item.get("core idea")
+                or ""
+            )
+            requirements = str(
+                item.get("requirements_summary")
+                or item.get("requirements")
+                or item.get("do_not_repeat_notes")
+                or item.get("countermeasures")
+                or ""
+            )
             goal = str(item.get("goal") or "")
             mem_type = str(item.get("type") or item.get("memory_type") or item.get("status") or "")
-            core_preview = _truncate_preview_text(core, 800)
-            req_preview = _truncate_preview_text(requirements, 800)
+            core_preview = _truncate_preview_text(core, 260)
+            req_preview = _truncate_preview_text(requirements, 200)
 
             lines = [
                 f"[{i}] 标题: {title}",
@@ -151,24 +195,35 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
                 f"类型/状态: {mem_type}" if mem_type else "",
                 f"质量状态: {lifecycle}",
                 f"目标: {goal}" if goal else "",
-                f"核心思路/避坑指南: {core_preview}" if core_preview else "核心思路/避坑指南: (empty)",
-                f"要点/约束: {req_preview}" if req_preview else "",
+                f"核心思路摘要: {core_preview}" if core_preview else "核心思路摘要: (empty)",
+                f"要点/约束摘要: {req_preview}" if req_preview else "",
+                f"全文预计 {int(item.get('estimated_full_text_tokens') or 0)} tokens"
+                if item.get("estimated_full_text_tokens")
+                else "",
                 f"相似度 {pick_similarity(item)}" if pick_similarity(item) else "",
+                "选中后须 apply_evomemory 获取完整正文。",
             ]
             blocks.append("\n".join([x for x in lines if x]))
         elif kind == "workflow":
             title = str(item.get("title") or "(untitled)")
-            desc = _truncate_preview_text(str(item.get("description") or ""), 600)
+            desc = _truncate_preview_text(
+                str(item.get("description_summary") or item.get("description") or ""),
+                260,
+            )
             pid = str(item.get("parent_ideation_id") or "") or "—"
             peid = str(item.get("parent_experiment_id") or "") or "—"
             lines = [
                 f"[{i}] {title}",
                 id_line,
-                f"    描述: {desc}" if desc else "",
+                f"    描述摘要: {desc}" if desc else "",
                 f"    质量状态: {lifecycle}",
-                f"    parent_ideation_id: {pid}",
-                f"    parent_experiment_id: {peid}",
+                f"    parent_ideation_id: {pid}" if pid != "—" else "",
+                f"    parent_experiment_id: {peid}" if peid != "—" else "",
+                f"    全文预计 {int(item.get('estimated_full_text_tokens') or 0)} tokens"
+                if item.get("estimated_full_text_tokens")
+                else "",
                 f"    相似度 {pick_similarity(item)}" if pick_similarity(item) else "",
+                "    选中后须 apply_evomemory 获取完整正文。",
             ]
             blocks.append("\n".join([x for x in lines if x]))
         elif kind == "recipe":
@@ -197,25 +252,30 @@ def _format_results(kind: str, results: List[Dict[str, Any]], max_items: int) ->
             blocks.append("\n".join([x for x in lines if x]))
         else:
             proposal = str(item.get("proposal_context") or item.get("task") or item.get("title") or "(untitled)")
-            data_s = str(item.get("data_strategy") or item.get("data") or "")
-            model_s = str(item.get("model_strategy") or item.get("model") or "")
-            env_s = str(item.get("environment") or item.get("environment_constraints") or "")
+            result_s = str(
+                item.get("result_summary")
+                or item.get("conclusion_summary")
+                or item.get("conclusion")
+                or ""
+            )
+            outcome = str(item.get("outcome") or "")
             mem_status = str(item.get("status") or item.get("memory_type") or "")
 
-            prop_preview = _truncate_preview_text(proposal, 800)
-            data_preview = _truncate_preview_text(data_s, 800)
-            model_preview = _truncate_preview_text(model_s, 800)
-            env_preview = _truncate_preview_text(env_s, 800)
+            prop_preview = _truncate_preview_text(proposal, 260)
+            result_preview = _truncate_preview_text(result_s, 200)
 
             lines = [
                 f"[{i}] 实验上下文: {prop_preview}",
                 id_line,
                 f"状态: {mem_status}" if mem_status else "",
+                f"outcome: {outcome}" if outcome else "",
                 f"质量状态: {lifecycle}",
-                f"数据策略: {data_preview}" if data_preview else "",
-                f"模型策略: {model_preview}" if model_preview else "",
-                f"环境/约束: {env_preview}" if env_preview else "",
+                f"结果摘要: {result_preview}" if result_preview else "",
+                f"全文预计 {int(item.get('estimated_full_text_tokens') or 0)} tokens"
+                if item.get("estimated_full_text_tokens")
+                else "",
                 f"相似度 {pick_similarity(item)}" if pick_similarity(item) else "",
+                "选中后须 apply_evomemory 获取完整正文。",
             ]
             blocks.append("\n".join([x for x in lines if x]))
 
@@ -304,15 +364,17 @@ def apply_evomemory(
     retrieval_proof: str,
     fit_reason: str,
     adaptation_plan: str,
+    force_apply: bool = False,
 ) -> str:
     """选择一条候选、创建可信应用并按需获取其完整正文。
 
-    retrieval_proof 必须复制检索结果中的 HUB_APPLY_PROOF（以 v1. 开头的签名），
-    不能用 memory_id 或 [HUB_REF:…] 代替。只有适用条件覆盖当前约束且预期净效用为正时才调用；
-    否则 abstain，不要调用本工具。
+    retrieval_proof 必须复制检索结果中的 HUB_APPLY_PROOF（裸 v1.… 签名，或带
+    [HUB_APPLY_PROOF:…] 包装均可）。不能用 memory_id 或 [HUB_REF:…] 代替。
+    recommended_action=avoid 的候选默认拒绝；仅当用户明确要求时设 force_apply=true。
+    只有适用条件覆盖当前约束且预期净效用为正时才调用；否则 abstain。
     """
     mid = str(memory_id or "").strip().lower()
-    proof = str(retrieval_proof or "").strip()
+    proof = _normalize_retrieval_proof(retrieval_proof)
     fit = str(fit_reason or "").strip()
     plan = str(adaptation_plan or "").strip()
     if not mid or not proof:
@@ -327,6 +389,17 @@ def apply_evomemory(
             "应用未记录：retrieval_proof 不能是 memory_id 或 [HUB_REF:…]。"
             "请粘贴检索结果中的 HUB_APPLY_PROOF（通常以 v1. 开头）。"
         )
+    if not proof.lower().startswith("v1."):
+        return (
+            "应用未记录：retrieval_proof 须为 Hub 签名（通常以 v1. 开头）。"
+            "可直接粘贴 [HUB_APPLY_PROOF:v1.…]，工具会自动剥掉包装。"
+        )
+    meta = _LAST_CANDIDATE_META.get(mid) or {}
+    if str(meta.get("recommended_action") or "").lower() == "avoid" and not force_apply:
+        return (
+            "应用未记录：该候选 recommended_action=avoid，请 abstain。"
+            "若用户明确要求仍要试用，请设 force_apply=true。"
+        )
     if len(fit) < 24 or len(plan) < 24:
         return "应用未记录：fit_reason 与 adaptation_plan 须说明为何适用以及如何改写（各至少约一句话），否则请 abstain。"
     try:
@@ -335,7 +408,7 @@ def apply_evomemory(
 
         headers, err = headers_or_error()
         if not headers:
-            return f"应用未记录：{err or '需要 Hub 登录（EVOMEMORY_API_TOKEN）。'}"
+            return f"应用未记录：{err or '需要 Hub 登录（EVOMEMORY_API_TOKEN 或 EVOMEMORY_AGENT_TOKEN）。'}"
         application = create_application_by_id(mid, proof, headers=headers)
     except Exception as e:
         return f"应用未记录：Hub 请求失败（{type(e).__name__}）。"
