@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -439,6 +440,11 @@ def _adaptation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
             if ctx.get("_token_cost") is not None
             else None
         ),
+        "wall_time_ms": (
+            max(0, int(ctx["_wall_time_ms"]))
+            if ctx.get("_wall_time_ms") is not None
+            else None
+        ),
         "failure_type": failure_type,
     }
 
@@ -478,11 +484,20 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
     def __init__(self, *, enabled: bool | None = None) -> None:
         super().__init__()
         self._enabled_override = enabled
+        self._run_t0: float | None = None
 
     def _is_enabled(self) -> bool:
         if self._enabled_override is False:
             return False
         return _sync_enabled()
+
+    def _mark_run_start(self) -> None:
+        self._run_t0 = time.perf_counter()
+
+    def _attach_wall_time(self, ctx: dict[str, Any]) -> None:
+        if self._run_t0 is None:
+            return
+        ctx["_wall_time_ms"] = max(0, int((time.perf_counter() - self._run_t0) * 1000))
 
     def _hub_headers_or_none(self) -> dict[str, str] | None:
         from .uploader import hub_headers
@@ -563,6 +578,7 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
         if len(messages) < 2:
             return None
         ctx = _build_context(state)
+        self._attach_wall_time(ctx)
         if not ctx.get("task_description"):
             return None
         actions = _resolve_post_run_actions(ctx)
@@ -582,6 +598,7 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
         if len(messages) < 2:
             return
         ctx = _build_context(state)
+        self._attach_wall_time(ctx)
         if not ctx.get("task_description"):
             return
 
@@ -671,6 +688,14 @@ class EvoMemorySyncMiddleware(AgentMiddleware):
                     os.unlink(tmp_path)
                 except OSError:
                     pass
+
+    def before_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
+        self._mark_run_start()
+        return None
+
+    async def abefore_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
+        self._mark_run_start()
+        return None
 
     def after_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
         try:

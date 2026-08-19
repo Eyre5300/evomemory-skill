@@ -202,6 +202,31 @@ def test_adaptation_payload_hmacs_task_and_excludes_trace():
     assert payload["failure_type"] == "validation_failed"
     assert payload["tool_calls"] == 3
     assert payload["token_cost"] == 456
+    assert payload.get("wall_time_ms") is None
+
+
+def test_adaptation_payload_includes_wall_time_ms():
+    with patch("evomemory_sync.middleware._adaptation_fingerprint_key", return_value="test-key"):
+        payload = _adaptation_payload(
+            {
+                "task_description": "task",
+                "run_success_flag": True,
+                "validation_status": "not_applicable",
+                "_wall_time_ms": 1234,
+            }
+        )
+    assert payload["wall_time_ms"] == 1234
+
+
+def test_middleware_records_wall_time_from_run_start():
+    mw = __import__("evomemory_sync.middleware", fromlist=["EvoMemorySyncMiddleware"]).EvoMemorySyncMiddleware(
+        enabled=False
+    )
+    mw._mark_run_start()
+    ctx: dict = {}
+    mw._attach_wall_time(ctx)
+    assert isinstance(ctx.get("_wall_time_ms"), int)
+    assert ctx["_wall_time_ms"] >= 0
 
 
 def test_provider_reported_token_cost_sums_primary_agent_messages():

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "evomemory-sync"
-version = "0.2.5"
+version = "0.2.6"
 description = "EvoMemory Hub sync: LangChain AgentMiddleware + CLI search/setup"
 readme = "README.md"
 requires-python = ">=3.10"
