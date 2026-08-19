@@ -411,28 +411,40 @@ def _adaptation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
         "os": platform.system().lower(),
     }
     failure_type = None
+    validation_status = str(ctx.get("validation_status") or "not_applicable")
+    validation_reason = str(ctx.get("validation_reason") or "")[:500]
     if not success:
         if ctx.get("has_tool_error_flag"):
             failure_type = "tool_error"
         elif ctx.get("has_code_runtime_error_flag"):
             failure_type = "runtime_error"
-        elif ctx.get("validation_status") == "failed":
+        elif validation_status == "failed":
             failure_type = "validation_failed"
         else:
             failure_type = "unsuccessful_run"
+        # Credible failure evidence for Hub negative-transfer counting.
+        if validation_status == "not_applicable":
+            validation_status = "failed"
+        if not validation_reason.strip():
+            validation_reason = {
+                "tool_error": "tool invocation failed after applying Hub memory",
+                "runtime_error": "runtime or non-zero exit after applying Hub memory",
+                "validation_failed": "validation or ground-truth mismatch after applying Hub memory",
+                "unsuccessful_run": "run ended unsuccessfully after applying Hub memory",
+            }.get(failure_type or "", "run ended unsuccessfully after applying Hub memory")
     return {
         "task_fingerprint": fingerprint,
         # Only this middleware path is reachable after a valid local
         # apply_evomemory capability was observed in the agent tool calls.
         "attribution": "explicit_application",
         "outcome": "success" if success else "failure",
-        "validation_status": str(ctx.get("validation_status") or "not_applicable"),
+        "validation_status": validation_status,
         "evidence_type": (
             "agent_self_check"
-            if str(ctx.get("validation_status") or "not_applicable") in {"passed", "failed"}
+            if (not success) or validation_status in {"passed", "failed"}
             else "not_applicable"
         ),
-        "validation_reason": str(ctx.get("validation_reason") or "")[:500],
+        "validation_reason": validation_reason[:500],
         "agent_profile": profile,
         "tool_calls": max(0, int(ctx.get("_tool_call_count") or 0)),
         "token_cost": (

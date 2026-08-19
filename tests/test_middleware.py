@@ -199,10 +199,32 @@ def test_adaptation_payload_hmacs_task_and_excludes_trace():
     assert payload["attribution"] == "explicit_application"
     assert payload["outcome"] == "failure"
     assert payload["evidence_type"] == "agent_self_check"
+    assert payload["validation_status"] == "failed"
+    assert len(payload["validation_reason"]) >= 24
     assert payload["failure_type"] == "validation_failed"
     assert payload["tool_calls"] == 3
     assert payload["token_cost"] == 456
     assert payload.get("wall_time_ms") is None
+
+
+def test_adaptation_payload_promotes_runtime_failure_to_credible_evidence():
+    with patch("evomemory_sync.middleware._adaptation_fingerprint_key", return_value="test-key"):
+        payload = _adaptation_payload(
+            {
+                "task_description": "task",
+                "run_success_flag": False,
+                "validation_status": "not_applicable",
+                "has_code_runtime_error_flag": True,
+                "_tool_call_count": 2,
+                "_wall_time_ms": 800,
+            }
+        )
+    assert payload["outcome"] == "failure"
+    assert payload["validation_status"] == "failed"
+    assert payload["evidence_type"] == "agent_self_check"
+    assert "runtime" in payload["validation_reason"].lower() or "exit" in payload["validation_reason"].lower()
+    assert payload["tool_calls"] == 2
+    assert payload["wall_time_ms"] == 800
 
 
 def test_adaptation_payload_includes_wall_time_ms():
