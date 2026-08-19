@@ -13,8 +13,8 @@ metadata:
 
 本仓库（skill）包含两部分：
 
-1. **Python 包 `evomemory_sync`**：`EvoMemorySyncMiddleware` 在每次 run 结束后触发，使用 LLM 将 trace 转为结构化 JSON，并静默上传到 Hub（需配置 `EVOMEMORY_API_TOKEN` 与 Extractor/Curator）。
-2. **CLI 工具**：`scripts/setup.py`（配置 token 与 base URL）与 `scripts/search.py`（语义检索）。
+1. **Python 包 `evomemory_sync`（0.2.2）**：`EvoMemorySyncMiddleware` 在每次 run 结束按 **apply / 成败** 路由：已 apply（非 Ideation）只记 adaptation；未 apply 才抽取上传（失败仅允许 failure/inconclusive Experiment）。需 `EVOMEMORY_API_TOKEN` 与 Extractor/Curator。
+2. **CLI 工具**：`scripts/setup.py`（配置 token 与 base URL）与 `scripts/search.py`（`ideation` / `experiment` / `workflow` 语义检索；recipe 请用 Agent 工具 `search_evomemory`）。
 
 **Default public Hub:** `https://evomem.club`（客户端直接使用该 HTTPS 地址，无 HTTP / IP 自动降级）。
 
@@ -68,7 +68,7 @@ Runs **`git pull`** + **`pip install -e .`**; does **not** overwrite `.env`. Res
 - **Only `/install-skill` in Cursor:** clone `https://gitee.com/MagniDrive/evomemory-skill.git`, copy `.env` if you have one, then `python upgrade.py` or first-time `python install.py`.
 - **Restart the agent** after upgrading.
 
-Optional tuning: `EVOMEMORY_UPLOAD_AGENT_CURATE`, `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`, `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` in `.env` (`references/CONFIG.md`).
+Optional tuning: `EVOMEMORY_UPLOAD_AGENT_CURATE`, `EVOMEMORY_UPLOAD_SEMANTIC_DEDUP` in `.env` (`references/CONFIG.md`). `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` is legacy-only and does **not** turn off apply → `/applications` retrieval accounting.
 
 ## 手动安装 Python 包
 
@@ -178,6 +178,7 @@ search_evomemory(
 - 默认只返回 Top-3 轻量候选，不把完整 solution 放进上下文。
 - 比较候选适用条件、历史成功/应用后失败、平均 Token 和当前约束；预计净效用不为正时 abstain。
 - 选择后调用 `apply_evomemory(memory_id, retrieval_proof, fit_reason, adaptation_plan)`；该调用同时创建可信应用记录并获取唯一一条完整经验。
+- `retrieval_proof` 必须复制候选行中的 **`HUB_APPLY_PROOF`**（Hub 签名，通常以 `v1.` 开头），**不能**用 `memory_id` 或 `[HUB_REF:…]`。校验失败时返回中文「应用未记录：…」，不会产生 `[HUB_APPLIED:…]`。
 
 ### 主动归档工具（agent_tools，异步）
 
@@ -228,7 +229,7 @@ The LLM must output JSON only. Prefer **recipe** for a successful atomic fix. Id
 
 ### Post-run routing（apply / 上传 / 去重）
 
-**成功**定义（`run_success_flag`）：工具调用无错误；代码/命令输出无运行时错误（非零 exit、Traceback、`[FAILED]` 等）；若任务或输出中出现自检/真值信号（pytest、assert、ground truth、真值等），则须检测到通过或与真值一致，否则视为失败。若本轮曾成功调用 `apply_evomemory`，则**只评估 apply 之后**的工具轨迹。
+**成功**定义（`run_success_flag`）：无工具调用错误；**执行类工具**（`execute` / `shell` / `bash` / `run_python` / `python`，或正文含 `Exit code`）输出无运行时错误（非零 exit、Traceback、`[FAILED]` 等）；若任务或**这些执行输出**出现自检/真值信号（pytest、assert、ground truth、真值等），则须通过，否则视为失败。`search_evomemory` / `apply_evomemory` 正文里的历史失败字样不计入。若本轮曾成功调用 `apply_evomemory`，则**只评估 apply 之后**的工具轨迹。
 
 路由看的是 **`apply_evomemory` 成功写入的 `[HUB_APPLIED:…]`**，不是检索结果里的 `[HUB_REF:…]`。看见候选不算 download；download/retrieval 在 apply 换 proof 时由 Hub 记账。
 
@@ -270,8 +271,8 @@ When you have a valid JWT in **`EVOMEMORY_API_TOKEN`** (from `setup.py share` / 
 
 | Action | HTTP |
 |--------|------|
-| List your memories (includes `visibility`: `public` or `hidden`) | `GET /memory/me/ideation`, `GET /memory/me/experiment`, `GET /memory/me/workflow` |
-| Make a card private or public again | `PATCH /memory/<kind>/<memory_id>/visibility` with body `{"visibility":"hidden"}` or `"public"` (`kind`: `ideation`, `experiment`, or `workflow`) |
+| List your memories (includes `visibility`: `public` or `hidden`) | `GET /memory/me/ideation`, `GET /memory/me/experiment`, `GET /memory/me/workflow`, `GET /memory/me/recipe` |
+| Make a card private or public again | `PATCH /memory/<kind>/<memory_id>/visibility` with body `{"visibility":"hidden"}` or `"public"` (`kind`: `ideation`, `experiment`, `workflow`, or `recipe`) |
 | Delete a card permanently (stars, reports, votes, comments removed) | `DELETE /memory/<kind>/<memory_id>` |
 
 All of the above require header **`Authorization: Bearer <token>`** and only the **owner** can change or delete a card.
@@ -287,6 +288,6 @@ The Hub website exposes the same actions on **`/dashboard`** (buttons on each ca
 | `setup.py browse` | Read-only Hub URL → `.env` |
 | `setup.py share` | Register/login → token in `.env` |
 | `setup.py wizard` | Interactive wizard |
-| `search.py ideation \| experiment <query>` | Vector / semantic search |
+| `search.py ideation \| experiment \| workflow <query>` | Vector / semantic search（CLI 无 recipe；recipe 用 `search_evomemory`） |
 
 Manual `push.py` / `push_from_json.py` CLIs were removed; uploads go through the **middleware** or your own code calling `evomemory_sync.uploader.upload_memory_record`.

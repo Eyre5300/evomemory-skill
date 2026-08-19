@@ -72,7 +72,7 @@ python scripts/setup.py wizard
 | `EVOMEMORY_CURATOR_TIMEOUT_SECONDS` | No | same as extractor | HTTP timeout for curator LLM call |
 | `EVOMEMORY_CURATOR_UPDATE_MIN_SIMILARITY` | No | same as `EVOMEMORY_UPLOAD_UPDATE_SIMILARITY` (`0.82`) | Hard safety gate: an LLM-proposed update below this own-card similarity is forced to a clean create, preventing unrelated experiences from overwriting each other |
 | `EVOMEMORY_CURATOR_SKIP_DUPLICATE_MIN_SIMILARITY` | No | same as `EVOMEMORY_UPLOAD_SKIP_SIMILARITY` (`0.90`) | Hard safety gate: an LLM duplicate-skip below this best candidate similarity is forced to a clean create; low-quality skips are unaffected |
-| `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` | No | `true` | Master switch for retrieval accounting. **Search impressions do not increment downloads.** A download/retrieval is recorded only when `apply_evomemory` successfully exchanges a Hub-signed proof. Set `0`/`false` to disable that Hub POST. |
+| `EVOMEMORY_RECORD_DOWNLOAD_ON_USE` | No | `true` | **Legacy only.** Gates the unused `record_download_by_id` helper (skill search/post-run no longer call it). **Does not** disable `apply_evomemory` → `POST /memory/{id}/applications`, which is where retrieval is actually recorded. |
 | `EVOMEMORY_RECORD_ADAPTATION_ON_USE` | No | `true` | When a cited Hub memory is used, send a privacy-minimized outcome event: local-keyed task HMAC-SHA256, success/failure, validation status, and non-secret Agent profile. No task text or trace is sent. |
 | `EVOMEMORY_OUTCOME_QUEUE_PATH` | No | `~/.evomemory/outcomes.sqlite3` | Durable SQLite queue for privacy-minimized outcomes. Tokens, raw tasks, prompts, and traces are never stored. |
 | `EVOMEMORY_OUTCOME_QUEUE_MAX` | No | `50000` | Maximum pending outcome rows; protects the local disk from unbounded growth. |
@@ -94,9 +94,13 @@ python scripts/setup.py wizard
 
 ## 自动上传中间件（`evomemory_sync`）
 
-当 Agent 注册了 `EvoMemorySyncMiddleware` 且设置了 `EVOMEMORY_API_TOKEN`，每次 run 结束都会启动离线 worker：调用 LLM 生成 Hub 结构化 JSON，并通过 **`upload_memory_record`** 上传。上传路径默认为 **Agent Curator**：先检索 Hub 相似卡，再由 LLM 决定 **create / update / skip** 并润色正文；若 Curator 关闭或失败，则回退到固定阈值的语义去重（`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`）。
+当 Agent 注册了 `EvoMemorySyncMiddleware` 且设置了 `EVOMEMORY_API_TOKEN`，每次 run 结束会按 **apply / 成败路由**决定是否启动离线 worker。已成功 apply（且非 Ideation）时只上报 adaptation，**不**启动抽取上传；未 apply，或 apply 的是 Ideation，才可能走 Extractor → **`upload_memory_record`**。上传路径默认为 **Agent Curator**：先检索 Hub 相似卡，再由 LLM 决定 **create / update / skip** 并润色正文；若 Curator 关闭或失败，则回退到固定阈值的语义去重（`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`）。
 
-**Post-run routing:** `search_evomemory` sends a structured problem profile and requests Top-3 lightweight candidates; seeing candidates does **not** count a retrieval. For an authenticated search, each result carries a short-lived proof signed by the Hub and bound to the account, memory ID, and content revision. After checking fit and expected utility, the Agent calls `apply_evomemory(memory_id, retrieval_proof, fit_reason, adaptation_plan)`; the Hub verifies the proof, records one retrieval per account/revision, returns an idempotent `application_id`, and returns only the selected full memory in that same response. Only a real tool result containing that ID can be attributed by middleware. The eventual success or failure event contains the application ID, a local-keyed HMAC-SHA256 task fingerprint used only for idempotency, provider-reported token count, weak Agent self-check status, tool-call count, failure class, and non-secret Agent profile; it never contains the raw task, trace, fit reason, adaptation plan, or proof. Applied runs never auto-upload a correction: success or failure only updates adaptation evidence. Not applied + success may upload a Recipe (or whatever type the extractor chooses). Not applied + failure may still upload, but only an Experiment with `outcome=failure` or `inconclusive` — never a success-shaped Recipe. Fingerprint dedup records a slot **only after a successful Hub upload**; extract/upload failures do not occupy the window. Launching the worker writes a temp JSON; if `Popen` fails, that file is deleted. The trace written for extraction is **redacted in the parent process** before the temp JSON file is created (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs and uncaptured tracebacks go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
+**Post-run routing:** `search_evomemory` sends a structured problem profile and requests Top-3 lightweight candidates; seeing candidates does **not** count a retrieval. For an authenticated search, each result carries a short-lived Hub-signed `HUB_APPLY_PROOF` (usually `v1.…`) bound to the account, memory ID, and content revision. The Agent must paste that proof into `apply_evomemory` — a bare UUID or `[HUB_REF:…]` is rejected client-side with a Chinese「应用未记录」error and never hits Hub. After Hub verifies the proof, it records one retrieval per account/revision, returns an idempotent `application_id`, and returns only the selected full memory. Only a tool result containing `[HUB_APPLIED:…]` is attributed by middleware.
+
+**Run success** (`run_success_flag`): no tool invocation errors; no runtime errors in **execution** tool bodies (`execute` / `shell` / `bash` / `run_python` / `python`, or bodies that contain `Exit code`); if the task or those execution outputs contain self-check / ground-truth signals, validation must pass. Failure text inside `search_evomemory` / `apply_evomemory` bodies does **not** count. After a successful apply, only the **post-apply** trail is assessed.
+
+**Upload policy:** successful apply of a non-Ideation card → adaptation only, no new card. Successful apply of an **Ideation** → may upload an Experiment with `parent_ideation_id`. Not applied + success → Recipe (or extractor choice). Not applied + failure → only Experiment with `outcome=failure` or `inconclusive`. Fingerprint dedup records a slot **only after a successful Hub upload**. Launching the worker writes a temp JSON; if `Popen` fails, that file is deleted. Traces are **redacted in the parent** before the temp file (unless `EVOMEMORY_SYNC_SEND_RAW_CONTEXT=true`). Worker logs go to `EVOMEMORY_WORKER_LOG_FILE` (default under `~/.evomemory/`).
 
 `.env` loading (`evomemory_sync.env_loader.load_env`): files are tried in order — skill-root `.env`, then `scripts/.env` — with `override=False`, so a key already set in the root file (or the process environment) is not overwritten by `scripts/.env`.
 
@@ -126,9 +130,7 @@ Hub 使用 pgvector 按**相似度**排序，返回最相近的前 `top_k` 条�
 
 - **Ideation:** `goal`, `title`, `core_idea`, `rationale`, `requirements`, `validation_plan`；成功/失败由关联 Experiment 的 `outcome` 表示。
 - **Experiment:** `proposal_context`, `data_strategy`, `model_strategy`, `environment`（同上）。
-- **Recipe（经验卡）：** Hub 仍存文本列 `trigger` / `problem` / `solution` / `env_snapshot` / `result` / `tags`。Skill 的 Extractor / Curator 产出**嵌套 JSON**，上传前由 `recipe_format.prepare_recipe_hub_fields` 格式化为带标签的多行文本：
-  - **problem** / **solution** / **env_snapshot**：Extractor/Curator 各写一段完整自然语言（须语义涵盖任务类型、领域、约束、状态；做法、参数、理由；Agent 与依赖环境），Hub **原样存储**，skill 不做字段拼接
-  - 若 LLM 仍输出旧版平铺字符串，会原样写入对应列（向后兼容）。
+- **Recipe（经验卡）：** Hub 仍存文本列 `trigger` / `problem` / `solution` / `env_snapshot` / `result` / `tags`。Extractor / Curator 产出 `problem` / `solution` / `env_snapshot` **完整自然语言段落**（字符串，非嵌套 JSON）。`prepare_recipe_hub_fields` **原样写入** Hub；若 LLM 仍给出旧版嵌套对象，对应段视为空，不做填空拼接。缺版本时应写明「trace 未给出」，不要只因此 skip。
 
 ## API 接口
 
@@ -145,16 +147,19 @@ EvoMemory Hub（例如 `evomem.club`）对外暴露：
 | `/memory/experiment/upload` | POST | Yes | Upload experiment memory |
 | `/memory/experiment/{id}/update` | PUT | Yes | Edit own experiment (re-embed) |
 | `/memory/workflow/upload` | POST | Yes | Upload workflow memory |
+| `/memory/workflow/{id}/update` | PUT | Yes | Edit own workflow (re-embed) |
 | `/memory/recipe/upload` | POST | Yes | Upload recipe (经验卡) |
 | `/memory/recipe/{id}/update` | PUT | Yes | Edit own recipe (re-embed) |
-| `/memory/{kind}/{id}/record-download` | POST | No* | Increment download_count (skill search / agent use) |
-| `/memory/{id}/record-download` | POST | No* | Same, auto-detect kind |
+| `/memory/{kind}/{id}/record-download` | POST | Yes | Legacy lightweight retrieval counter (owner/auth required). **Skill search does not call this**; Agent retrieval is recorded by `/memory/{id}/applications`. |
+| `/memory/{id}/record-download` | POST | Yes | Same, auto-detect kind |
 | `/memory/ideation/search` | POST | No | Search ideation memories |
 | `/memory/experiment/search` | POST | No | Search experiment memories |
 | `/memory/workflow/search` | POST | No | Search workflow memories |
+| `/memory/recipe/search` | POST | No | Search recipe memories |
 | `/memory/me/ideation` | GET | Yes | Current user’s ideation list (includes `visibility`) |
 | `/memory/me/experiment` | GET | Yes | Current user’s experiment list (includes `visibility`) |
 | `/memory/me/workflow` | GET | Yes | Current user’s workflow list (includes `visibility`) |
+| `/memory/me/recipe` | GET | Yes | Current user’s recipe list (includes `visibility`) |
 | `/memory/{kind}/{memory_id}/visibility` | PATCH | Yes | `kind` is `ideation`, `experiment`, `workflow`, or `recipe`. Body: `{"visibility":"public"}` or `"hidden"` (owner only). Skill `delete_evomemory`: first call → `hidden` (trash); second call on hidden → `DELETE`. |
 | `/memory/{kind}/{memory_id}` | DELETE | Yes | Delete memory (owner only) |
 | `/memory/report` | POST | Yes | Report inappropriate content |

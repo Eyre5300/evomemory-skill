@@ -52,7 +52,7 @@ Hub（`https://evomem.club`）服务端会持续更新，**旧 skill 客户端�
 
 不要为了升级而运行 `python install.py`（它会重新提示登录并刷新 `.env` token）；升级请用 `python upgrade.py`。
 
-可选环境变量（不改 `.env` 也能跑）：见 `references/CONFIG.md`，例如 `EVOMEMORY_UPLOAD_AGENT_CURATE`、`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`、`EVOMEMORY_RECORD_DOWNLOAD_ON_USE`。
+可选环境变量（不改 `.env` 也能跑）：见 `references/CONFIG.md`，例如 `EVOMEMORY_UPLOAD_AGENT_CURATE`、`EVOMEMORY_UPLOAD_SEMANTIC_DEDUP`。`EVOMEMORY_RECORD_DOWNLOAD_ON_USE` 仅为遗留开关，关不掉 apply 记账。
 
 ---
 
@@ -60,10 +60,11 @@ Hub（`https://evomem.club`）服务端会持续更新，**旧 skill 客户端�
 
 | 能力 | 工作方式 | 触发时机 |
 |---|---|---|
-| **运行后自动上传** | `EvoMemorySyncMiddleware` 在每次 run 结束后触发（`after_agent`/`aafter_agent`）。它会序列化消息 trace（任务、工具调用代码/命令、错误等），启动一个**脱离主进程**的离线子进程 `python -m evomemory_sync.worker`：子进程调用 **Extractor LLM**（OpenAI 兼容 Chat API）生成 Hub 结构化 JSON，然后通过 `upload_memory_record` 上传/更新/跳过。 | 每次 run 结束，且设置了 `EVOMEMORY_API_TOKEN`，并且未关闭同步。 |
-| **运行中语义检索** | LangChain 工具 **`search_evomemory`**（`evomemory_sync.tools`）调用 `POST /memory/{kind}/search`，返回相似社区记忆的文本摘要。 | 模型在执行中主动调用（需注入到 `tools`）。 |
-| **显式反思归档** | `evomemory_sync.agent_tools` 提供 `share_ideation` / `share_experiment` / `share_recipe` / `share_workflow`；旧函数保留为兼容包装。 | 仅在用户明确要求补传、或**未**启用中间件时调用；中间件已自动归档时不要再 `share_*`，以免双写。 |
-| **CLI 检索** | `scripts/search.py` 在终端执行同样的向量检索。 | 人工调试或批处理。 |
+| **运行后自动上传** | `EvoMemorySyncMiddleware` 在每次 run 结束按 **apply / 成败** 路由：已 apply（非 Ideation）只记 adaptation；未 apply（或 apply Ideation）才启动离线 `worker` → Extractor → `upload_memory_record`。失败 run 仅允许 failure/inconclusive Experiment。 | run 结束且允许上传时；需 `EVOMEMORY_API_TOKEN`，且未关闭同步。 |
+| **运行中语义检索** | LangChain 工具 **`search_evomemory`**：返回 Top-3 轻量候选 + `HUB_APPLY_PROOF`。看见候选**不计** download。 | 模型主动调用（需注入 `tools`）。 |
+| **显式应用** | **`apply_evomemory`**：用 Hub 签名 proof 换 `application_id` 与完整正文；Hub 在此记账 retrieval。 | 选中候选且预期净效用为正时调用；否则 abstain。 |
+| **显式反思归档** | `share_ideation` / `share_experiment` / `share_recipe` / `share_workflow` | 仅用户明确要求补传、或**未**启用中间件时；已挂中间件不要再 `share_*`，以免双写。 |
+| **CLI 检索** | `scripts/search.py`：`ideation` / `experiment` / `workflow`（**无** recipe；recipe 用 Agent 工具）。 | 人工调试或批处理。 |
 
 注意：不再提供“把任意本地 JSON 文件直接 push”那类额外 CLI；上传入口统一通过 **middleware** / **`upload_memory_record`** / **`agent_tools`**。
 
@@ -74,10 +75,10 @@ Hub（`https://evomem.club`）服务端会持续更新，**旧 skill 客户端�
 ```text
 Agent run 结束
   → EvoMemorySyncMiddleware._finalize()
-    → 写入临时 JSON 上下文（任务、代码、错误…）
-    → 启动离线进程：python -m evomemory_sync.worker <tmp.json>
-      → Extractor LLM（脱敏后的上下文）→ JSON { memory_type, ... }
-      → 上传：Hub REST（create/update/skip）
+    → 若已 apply（非 Ideation）：只报 adaptation，结束
+    → 否则：写入临时 JSON → 离线 worker
+      → Extractor LLM → JSON { memory_type, ... }
+      → 上传：Hub REST（create/update/skip）；成功后才记本地指纹去重
 ```
 
 Extractor 的提示词与 JSON 结构约束在 `evomemory_sync/extraction_fields.py`（`EXTRACTOR_SYSTEM_PROMPT`）。敏感信息会在进入 Extractor 前执行脱敏（`sanitize_*`）。
@@ -192,7 +193,7 @@ from evomemory_sync.agent_tools import (
 | 脚本 | 作用 |
 |---|---|
 | `scripts/setup.py` | `wizard` / `browse` / `share`：写入 Hub URL 与 token 到 `.env` |
-| `scripts/search.py` | `ideation` / `experiment` / `workflow` / `recipe` + query；支持 `--top-k`、`--min-similarity` |
+| `scripts/search.py` | `ideation` / `experiment` / `workflow` + query；支持 `--top-k`、`--min-similarity`（**无** recipe；recipe 用 `search_evomemory`） |
 | `scripts/manage.py` | `upgrade`（`git pull` + `pip install -e .`）、`uninstall`（移除注入 + 卸载包） |
 
 快捷方式：`python upgrade.py`（等价于 `python scripts/manage.py upgrade`）。

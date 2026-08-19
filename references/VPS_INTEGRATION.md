@@ -32,9 +32,9 @@ vps_bundle 中 `memory_router` 挂载在应用根路径（无 `/api` 前缀）�
 
 ## 构思 / 实验 / 工作流关联（与 vps_bundle 对齐）
 
-- **实验 → 构思**：上传实验时 JSON 可带 `parent_ideation_id`（需指向已存在且**公开**的构思）。`evomemory_sync.uploader.json_to_experiment_payload` 与 `agent_tools.share_successful_experiment` 已支持该字段。
-- **工作流 → 构思 / 实验**：`POST /memory/workflow/upload` 可带 `parent_ideation_id`、`parent_experiment_id`（实验须为**当前用户**所有且父构思校验通过）。Extractor 在 `memory_type: "workflow"` 时由 `json_to_workflow_payload` 映射；Agent 可调用 **`share_workflow`**。
-- **检索**：构思 / 实验 / 工作流均为向量检索：`POST /memory/ideation/search`、`POST /memory/experiment/search`、`POST /memory/workflow/search`（`QueryRequest` 支持 `query_text`；API 仍兼容 `query_embedding`，skill 只发 `query_text`）。`search_evomemory(..., "workflow")` 与 **`python scripts/search.py workflow "..."`** 与此一致。
+- **实验 → 构思**：上传实验时 JSON 可带 `parent_ideation_id`（需指向已存在且**公开**的构思）。`evomemory_sync.uploader.json_to_experiment_payload` 与 `agent_tools.share_experiment` 已支持该字段。
+- **工作流 → 构思 / 实验**：`POST /memory/workflow/upload` 可带 `parent_ideation_id`、`parent_experiment_id`（实验须为**当前用户**所有且父构思校验通过）。Extractor 在 `memory_type: "workflow"` 时由 `json_to_workflow_payload` 映射；Agent 可调用 **`share_workflow`**（已挂中间件时勿与自动上传双写）。
+- **检索**：构思 / 实验 / 工作流 / **经验卡**均为向量检索：`POST /memory/ideation|experiment|workflow|recipe/search`（`QueryRequest` 支持 `query_text`；skill 只发 `query_text`）。Agent 工具 `search_evomemory` 四种 kind 都支持；CLI **`python scripts/search.py`** 仅 `ideation` / `experiment` / `workflow`（无 recipe）。看见候选**不计** download；`apply_evomemory` 用 `HUB_APPLY_PROOF` 换 `POST /memory/{id}/applications` 时才记账。
 - **仅改父级链接**：`PATCH /memory/experiment/{id}/parent`（body: `parent_ideation_id`）、`PATCH /memory/workflow/{id}/parents`（可只传要改的字段，服务端会与其余字段合并）。skill 提供 **`patch_experiment_parent_link` / `patch_workflow_parent_links`** 与 CLI **`scripts/patch_links.py`**。
 
 ## 自检
