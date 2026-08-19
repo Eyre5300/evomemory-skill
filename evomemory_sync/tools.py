@@ -409,7 +409,9 @@ def apply_evomemory(
         headers, err = headers_or_error()
         if not headers:
             return f"应用未记录：{err or '需要 Hub 登录（EVOMEMORY_API_TOKEN 或 EVOMEMORY_AGENT_TOKEN）。'}"
-        application = create_application_by_id(mid, proof, headers=headers)
+        application = create_application_by_id(
+            mid, proof, headers=headers, force_apply=bool(force_apply)
+        )
     except Exception as e:
         return f"应用未记录：Hub 请求失败（{type(e).__name__}）。"
     if not application or not application.get("application_id"):

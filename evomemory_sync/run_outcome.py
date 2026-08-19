@@ -171,18 +171,29 @@ def _assess_validation(task: str, messages: list[BaseMessage]) -> dict[str, Any]
 
 
 def _index_after_last_successful_apply(messages: list[BaseMessage]) -> int | None:
-    """If the agent applied Hub memory, return the index *after* the last apply tool result.
+    """If the agent truly applied Hub memory, return the index *after* that tool result.
+
+    Only trust ``apply_evomemory`` tool results that contain a ``[HUB_APPLIED:…]``
+    receipt. Rejected applies (avoid / invalid proof) must not switch the outcome
+    window to an empty post-apply trail that would default to success.
 
     Pre-apply independent failures (common with defer-search) must not poison the
     application outcome. Return None when there was no successful apply.
     """
     last_apply = -1
+    applied_re = re.compile(
+        r"\[HUB_APPLIED:(?:(?:ideation|experiment|workflow|recipe):)?[a-f0-9\-]{36}:[a-f0-9\-]{36}\]",
+        re.IGNORECASE,
+    )
     for i, msg in enumerate(messages):
         if not isinstance(msg, ToolMessage):
             continue
         if str(getattr(msg, "name", "") or "") != "apply_evomemory":
             continue
         if _has_tool_invocation_error(msg):
+            continue
+        body = _text_content(msg)
+        if not applied_re.search(body):
             continue
         last_apply = i
     if last_apply < 0:
@@ -197,6 +208,8 @@ def assess_run_outcome(messages: list[BaseMessage], *, task: str = "") -> dict[s
     - no tool invocation errors
     - no code/runtime errors in execute outputs (non-zero exit, tracebacks, [FAILED])
     - when self-check or ground truth is applicable: validation passed or matches
+    - after a trusted apply: at least one post-apply execution/validation trail
+      (apply-then-idle must not report success)
 
     When ``apply_evomemory`` succeeded earlier in the run, only the *post-apply*
     tool trail is assessed. Failures before apply do not mark the application
@@ -211,10 +224,22 @@ def assess_run_outcome(messages: list[BaseMessage], *, task: str = "") -> dict[s
     )
     validation = _assess_validation(task, scoped)
     val_status: ValidationStatus = validation["status"]
+    validation_reason = str(validation.get("reason") or "")
+
+    # Applied Hub memory but never re-executed / validated afterward: do not
+    # claim success (would under-count suspected negative transfer).
+    post_apply_idle = False
+    if start is not None:
+        exec_bodies = _execution_tool_bodies(scoped)
+        if not exec_bodies and val_status == "not_applicable":
+            post_apply_idle = True
+            val_status = "failed"
+            validation_reason = "post-apply trail has no execution or validation evidence"
 
     run_success = (
         not has_tool_error
         and not has_code_runtime_error
+        and not post_apply_idle
         and val_status in ("not_applicable", "passed")
     )
 
@@ -223,6 +248,6 @@ def assess_run_outcome(messages: list[BaseMessage], *, task: str = "") -> dict[s
         "has_tool_error_flag": has_tool_error,
         "has_code_runtime_error_flag": has_code_runtime_error,
         "validation_status": val_status,
-        "validation_reason": validation.get("reason", ""),
+        "validation_reason": validation_reason,
         "outcome_scope": "post_apply" if start is not None else "full_run",
     }

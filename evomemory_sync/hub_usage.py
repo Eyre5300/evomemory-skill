@@ -62,6 +62,8 @@ def create_application_by_id(
     memory_id: str,
     retrieval_proof: str,
     headers: dict[str, str] | None = None,
+    *,
+    force_apply: bool = False,
 ) -> dict[str, Any] | None:
     """Exchange a Hub-signed search proof for one server application id.
 
@@ -82,10 +84,13 @@ def create_application_by_id(
     if headers:
         req_headers.update(headers)
     timeout = float(_env("EVOMEMORY_API_TIMEOUT_SECONDS", "15") or "15")
+    payload: dict[str, Any] = {"retrieval_proof": proof}
+    if force_apply:
+        payload["force_apply"] = True
     try:
         r = requests.post(
             f"{get_base_url()}/memory/{mid}/applications",
-            json={"retrieval_proof": proof},
+            json=payload,
             headers=req_headers,
             timeout=timeout,
             verify=tls_verify(),

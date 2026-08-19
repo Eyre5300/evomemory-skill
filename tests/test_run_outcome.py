@@ -95,7 +95,10 @@ def test_search_memory_failure_text_does_not_poison_successful_execution():
             status="success",
         ),
         ToolMessage(
-            content="Application recorded. Now implement and validate.",
+            content=(
+                "EvoMemory application recorded by the Hub. "
+                "[HUB_APPLIED:recipe:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb]"
+            ),
             tool_call_id="apply-1",
             name="apply_evomemory",
             status="success",
@@ -112,6 +115,48 @@ def test_search_memory_failure_text_does_not_poison_successful_execution():
     assert out["validation_status"] == "passed"
     assert out["run_success_flag"] is True
     assert out["outcome_scope"] == "post_apply"
+
+
+def test_rejected_apply_without_hub_applied_does_not_switch_scope():
+    """Avoid / invalid apply must not create an empty post-apply success window."""
+    msgs = [
+        HumanMessage(content="fix with asserts"),
+        ToolMessage(
+            content="[FAILED] AssertionError\nExit code: 1",
+            tool_call_id="run-1",
+            name="run_python",
+            status="success",
+        ),
+        ToolMessage(
+            content="应用未记录：该候选 recommended_action=avoid，请 abstain。",
+            tool_call_id="apply-1",
+            name="apply_evomemory",
+            status="success",
+        ),
+    ]
+    out = assess_run_outcome(msgs, task="fix with asserts")
+    assert out["outcome_scope"] == "full_run"
+    assert out["run_success_flag"] is False
+
+
+def test_trusted_apply_without_post_apply_execution_is_not_success():
+    msgs = [
+        HumanMessage(content="use hub recipe"),
+        ToolMessage(
+            content=(
+                "EvoMemory application recorded by the Hub. "
+                "[HUB_APPLIED:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb]"
+            ),
+            tool_call_id="apply-1",
+            name="apply_evomemory",
+            status="success",
+        ),
+    ]
+    out = assess_run_outcome(msgs, task="use hub recipe")
+    assert out["outcome_scope"] == "post_apply"
+    assert out["run_success_flag"] is False
+    assert out["validation_status"] == "failed"
+    assert "no execution" in out["validation_reason"]
 
 
 def test_pre_apply_failure_does_not_poison_post_apply_success():
@@ -161,7 +206,10 @@ def test_post_apply_failure_still_counts_as_failure():
             status="success",
         ),
         ToolMessage(
-            content="EvoMemory application recorded by the Hub.",
+            content=(
+                "EvoMemory application recorded by the Hub. "
+                "[HUB_APPLIED:recipe:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb]"
+            ),
             tool_call_id="apply-1",
             name="apply_evomemory",
             status="success",
