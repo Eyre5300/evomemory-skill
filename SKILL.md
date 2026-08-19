@@ -13,7 +13,7 @@ metadata:
 
 本仓库（skill）包含两部分：
 
-1. **Python 包 `evomemory_sync`（0.2.3）**：`EvoMemorySyncMiddleware` 在每次 run 结束按 **apply / 成败** 路由：已 apply（非 Ideation）只记 adaptation；未 apply 才抽取上传（失败仅允许 failure/inconclusive Experiment）。需 `EVOMEMORY_API_TOKEN`（或 `EVOMEMORY_AGENT_TOKEN`）与 Extractor/Curator。图执行若因 recursion-limit 等错误提前结束，宿主应调用 `middleware.report_outcomes_on_error(state)`，否则 adaptation 可能丢失。
+1. **Python 包 `evomemory_sync`（0.2.4）**：`EvoMemorySyncMiddleware` 在每次 run 结束按 **apply / 成败** 路由：已 apply（非 Ideation）只记 adaptation；未 apply 才抽取上传（失败仅允许 failure/inconclusive Experiment；成功时可 Recipe 或可复用多步编排的 Workflow）。需 `EVOMEMORY_API_TOKEN`（或 `EVOMEMORY_AGENT_TOKEN`）与 Extractor/Curator。图执行若因 recursion-limit 等错误提前结束，宿主应调用 `middleware.report_outcomes_on_error(state)`，否则 adaptation 可能丢失。
 2. **CLI 工具**：`scripts/setup.py`（配置 token 与 base URL）与 `scripts/search.py`（`ideation` / `experiment` / `workflow` 语义检索；recipe 请用 Agent 工具 `search_evomemory`）。
 
 **Default public Hub:** `https://evomem.club`（客户端直接使用该 HTTPS 地址，无 HTTP / IP 自动降级）。
@@ -194,7 +194,7 @@ from evomemory_sync.agent_tools import (
 
 - 使用与全 skill 一致的 Hub 配置：**`EVOMEMORY_API_BASE_URL`** + **`EVOMEMORY_API_TOKEN`**（由 `scripts/setup.py` 写入 `.env`）。可选别名：**`EVOMEMORY_API_URL`**（覆盖 base）、**`EVOMEMORY_AGENT_TOKEN`**（在未设置 `EVOMEMORY_API_TOKEN` 时作为 Bearer）。
 - 归档与中间件上传均由 **Hub 端完成向量化**，无需配置客户端 embedding。
-- 将 `AGENT_SYSTEM_PROMPT_EXTENSION` 拼进 Agent 系统提示词。已挂载 `EvoMemorySyncMiddleware` 时，提示词会要求**不要**再调用 `share_*`（避免同一 run 双写）；仅在用户明确要求补传或未启用中间件时才显式归档。
+- 将 `AGENT_SYSTEM_PROMPT_EXTENSION` 拼进 Agent 系统提示词。已挂载 `EvoMemorySyncMiddleware` 时：**不要**再调用 `share_ideation` / `share_experiment` / `share_recipe`（避免双写）；`share_workflow` 仅当用户明确要求补传某套编排，或未启用中间件时再用。中间件成功时也可能自动上传 Workflow。
 
 ## 经验是谁在总结？
 
@@ -225,7 +225,9 @@ On `after_agent` / `aafter_agent` it builds a context object from `state["messag
 - **AIMessage** `tool_calls` → code/commands (e.g. `execute` + `command`, or args named `code` / `command`).
 - **ToolMessage** → `status == "error"` and error bodies feed **M_I** hints; successful experiment closure feeds **M_E** hints.
 
-The LLM must output JSON only. Prefer **recipe** for a successful atomic fix. Ideation has no outcome; every implemented attempt is an Experiment with `success`, `failure`, `partial`, or `inconclusive`. Workflow is rare (reusable prompt + tool wiring). See `evomemory_sync/extraction_fields.py`.
+The LLM must output JSON only. Prefer **recipe** for a successful atomic fix. Ideation has no outcome; every implemented attempt is an Experiment with `success`, `failure`, `partial`, or `inconclusive`. Prefer **workflow** only when the durable artifact is a reusable multi-step prompt+tool orchestration (context may set `_workflow_eligible`). See `evomemory_sync/extraction_fields.py`.
+
+**Recipe vs Workflow**：Recipe = 一次问题 → 原子解法；Workflow = 可粘贴的 prompt 模板 + 具体工具配置（编排本身才是产物）。能写成 trigger→solution 时仍 Prefer recipe，避免污染检索池。
 
 ### Post-run routing（apply / 上传 / 去重）
 
@@ -238,7 +240,7 @@ The LLM must output JSON only. Prefer **recipe** for a successful atomic fix. Id
 | 成功 **apply** Hub 经验，任务最终成功 | adaptation success | ❌ 不发新卡 |
 | 成功 **apply** Hub 经验，apply 之后仍失败 | adaptation failure | ❌（禁止把失败 run 发布成伪修正） |
 | 成功 apply 了一条 **Ideation** | 同上 | ✅ 可上传带 `parent_ideation_id` 的 Experiment |
-| **未** apply，任务成功 | — | ✅ Recipe（或抽取器选择的类型），经 Curator/去重 |
+| **未** apply，任务成功 | — | ✅ Recipe（默认）或可复用多步编排的 Workflow，经 Curator/去重 |
 | **未** apply，任务失败 | — | ✅ 仅允许 `outcome=failure/inconclusive` 的 Experiment |
 
 本地指纹去重：**仅在 Hub 上传成功后**记录；抽取/上传失败不会占坑，同一 context 可以重试。

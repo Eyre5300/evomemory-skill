@@ -52,6 +52,17 @@ class TestExtractionFields(unittest.TestCase):
         self.assertIn("do NOT skip solely for missing versions", prompt)
         self.assertIn("rather than skipping", prompt)
 
+    def test_extractor_prompt_has_workflow_trigger_and_example(self) -> None:
+        m = _load_extraction_fields()
+        prompt = m.EXTRACTOR_SYSTEM_PROMPT
+        self.assertIn("_workflow_eligible=true", prompt)
+        self.assertIn("multi-step reusable procedure", prompt)
+        self.assertIn('"memory_type":"workflow"', prompt)
+        self.assertIn("prompt_templates", prompt)
+        self.assertIn("tool_configuration", prompt)
+        self.assertIn("Prefer **recipe**", prompt)
+        self.assertIn("Prefer **workflow** only when", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

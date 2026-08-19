@@ -41,8 +41,8 @@ QUALITY STANDARDS (MANDATORY):
 Type-specific minimum requirements:
 - Failed experiment: MUST include the concrete error/result, failing path, and conclusion. If missing, output {"skip": true, "reason": "failed experiment lacks error/path/conclusion"}.
 - Experiment: MUST include an outcome, result summary, conclusion, and the environment that was actually stated (OS, runtime, or libraries). If versions are missing from the trace, say so in environment_constraints rather than skipping. Quantitative metrics are required when present in the trace; never invent them.
-- Workflow: prompt_templates MUST be complete, directly usable system instructions (not "让 AI 写代码" / "do something"). tool_configuration MUST be concrete. If not, output {"skip": true, "reason": "workflow templates/config not directly usable"}.
-- Recipe: ``problem``, ``solution``, ``env_snapshot`` MUST each be a **complete natural-language paragraph** written by you (see F). Cover all semantic dimensions in flowing prose — do NOT output nested JSON objects or field labels like task_type:. **solution** must include decision rationale (why, not only what). If any paragraph is missing or reads like bullet fragments, output {"skip": true, "reason": "recipe paragraphs incomplete or not prose"}.
+- Workflow: only from a **successful** multi-step orchestration. ``prompt_templates`` MUST be complete, directly usable system/step instructions (not "让 AI 写代码" / "do something"). ``tool_configuration`` MUST name concrete tools and constraints. If either is vague, do NOT emit workflow — prefer recipe or skip.
+- Recipe: ``problem``, ``solution``, ``env_snapshot`` MUST each be a **complete natural-language paragraph** written by you (see E). Cover all semantic dimensions in flowing prose — do NOT output nested JSON objects or field labels like task_type:. **solution** must include decision rationale (why, not only what). If any paragraph is missing or reads like bullet fragments, output {"skip": true, "reason": "recipe paragraphs incomplete or not prose"}.
 
 Choose exactly one output type:
 
@@ -55,7 +55,13 @@ B) Ideation — a shareable hypothesis that has not itself been tested in this t
 C) Experiment — one concrete validation attempt, whether it succeeded or failed:
 {"memory_type":"experiment","task_description":"","data_summary":"","model_strategy":"","environment_constraints":"","outcome":"success|failure|partial|inconclusive","result_summary":"","metrics":{},"failure_reason":null,"conclusion":"","evidence_type":"not_applicable|agent_self_check|deterministic_test|external_grader|human_review","parent_ideation_id":null,"hardware_requirements":null,"software_dependencies":null}
 
-D) Workflow — reusable prompts + tool wiring (rare; only when the durable artifact is an orchestration, not an atomic fix). Keys:
+D) Workflow — reusable **prompt templates + tool wiring** when the durable artifact is an orchestration (not a one-shot atomic fix). Emit workflow only when ALL of:
+  1. The run succeeded (context ``run_success_flag`` is true, or the trace clearly completed without failure).
+  2. You can write paste-ready ``prompt_templates`` (system / step instructions another agent can run).
+  3. You can write concrete ``tool_configuration`` (tool names + purpose / parameter bounds).
+  4. The value is a **multi-step reusable procedure**, not a single ``run_python`` / one-liner fix for one problem.
+  If context has ``_workflow_eligible=true``, evaluate workflow first; still fall back to recipe when the durable value is an atomic trigger→solution.
+  Never emit workflow for a failed run. Keys:
 {"memory_type":"workflow","title":"","description":"","prompt_templates":"","tool_configuration":"","parent_ideation_id":null,"parent_experiment_id":null}
 
 E) Recipe — lightweight atomic experience card (PREFERRED for most agent traces). Use when the trace contains a concrete problem-solution pair that other agents can directly reuse.
@@ -86,12 +92,13 @@ When quoting shell commands, paths, or flags inside any paragraph, copy them **v
 Full recipe keys:
 {"memory_type":"recipe","trigger":"","problem":"","solution":"","env_snapshot":"","result":"","tags":"","parent_ideation_id":null,"parent_experiment_id":null}
 
-Rules: Prefer **recipe** when a successful trace has a clear trigger→solution pattern. A failed attempt is an **experiment**, never an ideation or recipe. Use ideation only when the durable contribution is a hypothesis plus validation plan that was not implemented in this trace. parent_* fields are optional — fill only when a Hub UUID is explicitly referenced in the trace.
+Rules: Prefer **recipe** when a successful trace has a clear trigger→solution pattern (single fix, one tool path). Prefer **workflow** only when the durable product is a reusable multi-step prompt+tool orchestration (see D). A failed attempt is an **experiment**, never an ideation, recipe, or workflow. Use ideation only when the durable contribution is a hypothesis plus validation plan that was not implemented in this trace. parent_* fields are optional — fill only when a Hub UUID is explicitly referenced in the trace.
 If context contains ``_parent_ideation_id``, the Agent explicitly applied that Hub Ideation: output Experiment or skip, copy that UUID to ``parent_ideation_id``, and never output Recipe/Workflow/Ideation for this run.
 Evaluation provenance is not reusable knowledge: omit benchmark/dataset names and case identifiers from ``trigger``, ``problem``, ``solution``, ``result`` and ``tags`` unless the experience is specifically about operating that benchmark infrastructure rather than solving one of its cases.
 
 Examples (shape only; redact real secrets in your output):
 {"memory_type":"recipe","trigger":"pytorch OOM during 7B fine-tuning","problem":"在单卡 24GB 的 Python 深度学习训练场景里做代码调试：只能用 execute 调参，batch_size=64 时第一步 forward 就 OOM，尚未完成任何有效 checkpoint。","solution":"开启 gradient_checkpointing，并把 batch_size 降到 32、打开 fp16。这样选是因为 OOM 来自激活峰值，checkpointing 用算力换显存，减半 batch 直接压低峰值。","env_snapshot":"由 Qwen2.5-72B + evo-run-abc 总结；依赖 transformers==4.40.0 与 torch==2.3.0，通过 execute 执行命令，运行在 CUDA 12.1 的 RTX 3090 24GB 上。","result":"training succeeded, VRAM 24.1GB→18.3GB, speed -15%","tags":"pytorch,OOM,fine-tuning","parent_ideation_id":null,"parent_experiment_id":null}
+{"memory_type":"workflow","title":"web research then code fix loop","description":"Search docs, draft a patch, run tests, iterate once on failure.","prompt_templates":"system: You fix Python bugs with docs+tests.\\nuser_template: Issue: {{issue}}. Use web_search then run_python.","tool_configuration":"tools: web_search (docs only), run_python (submit full module). Max 2 test submissions.","parent_ideation_id":null,"parent_experiment_id":null}
 {"memory_type":"ideation","goal":"Q","title":"Hypothesis X","core_idea":"Try X","rationale":"Reason R","requirements":"Needs Y","validation_plan":"Measure Z"}
 {"memory_type":"experiment","task_description":"Q","data_summary":"D","model_strategy":"M","environment_constraints":"E","outcome":"failure","result_summary":"Concrete error Y","metrics":{},"failure_reason":"X failed at step Z","conclusion":"Reject X under constraint C","evidence_type":"deterministic_test","parent_ideation_id":null,"hardware_requirements":null,"software_dependencies":null}
 """

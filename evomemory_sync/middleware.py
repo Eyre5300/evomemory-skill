@@ -266,6 +266,51 @@ def _extract_applied_hub_references(messages: list[BaseMessage]) -> set[str]:
     return set(_extract_applied_hub_applications(messages))
 
 
+# Tools that are EvoMemory bookkeeping / archive — not orchestration steps.
+_EVOMEMORY_META_TOOLS = frozenset(
+    {
+        "search_evomemory",
+        "apply_evomemory",
+        "delete_evomemory",
+        "list_my_evomemory",
+        "restore_evomemory",
+        "share_ideation",
+        "share_experiment",
+        "share_recipe",
+        "share_workflow",
+        "share_successful_experiment",
+        "share_failed_ideation",
+    }
+)
+
+
+def _collect_tool_names(messages: list[BaseMessage]) -> list[str]:
+    """Ordered unique tool names seen in AI tool_calls and ToolMessage.name."""
+    names: list[str] = []
+    seen: set[str] = set()
+    for msg in messages:
+        if isinstance(msg, AIMessage):
+            for tc in getattr(msg, "tool_calls", None) or []:
+                name = str(tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "") or "").strip()
+                if name and name not in seen:
+                    seen.add(name)
+                    names.append(name)
+        elif isinstance(msg, ToolMessage):
+            name = str(getattr(msg, "name", "") or "").strip()
+            if name and name not in seen:
+                seen.add(name)
+                names.append(name)
+    return names
+
+
+def _workflow_eligible(*, run_success: bool, tool_names: list[str], tool_call_count: int) -> bool:
+    """Heuristic hint for the extractor: multi-tool successful orchestration."""
+    if not run_success:
+        return False
+    non_meta = [n for n in tool_names if n not in _EVOMEMORY_META_TOOLS]
+    return len(non_meta) >= 2 and tool_call_count >= 3
+
+
 def _provider_reported_token_cost(messages: list[BaseMessage]) -> int | None:
     """Sum primary-agent tokens without estimating from private message text."""
     total = 0
@@ -302,6 +347,11 @@ def _build_context(state: AgentState) -> dict[str, Any]:
     applied_hub_kinds = _extract_applied_hub_kinds(messages)
     applied_hub_refs = set(applied_hub_applications)
     outcome = assess_run_outcome(messages, task=task)
+    tool_call_count = sum(
+        len(getattr(msg, "tool_calls", None) or []) for msg in messages if isinstance(msg, AIMessage)
+    )
+    tool_names = _collect_tool_names(messages)
+    run_ok = bool(outcome["run_success_flag"])
     raw: dict[str, Any] = {
         "task_description": task,
         "executed_code_and_commands": code,
@@ -310,7 +360,7 @@ def _build_context(state: AgentState) -> dict[str, Any]:
         "has_code_runtime_error_flag": outcome["has_code_runtime_error_flag"],
         "validation_status": outcome["validation_status"],
         "validation_reason": outcome["validation_reason"],
-        "run_success_flag": outcome["run_success_flag"],
+        "run_success_flag": run_ok,
         "last_tool_messages": _last_tool_messages(messages),
         # This legacy worker/curator key now means "applied", not merely
         # "present in a search result". Keep retrievals separately for metrics.
@@ -321,8 +371,10 @@ def _build_context(state: AgentState) -> dict[str, Any]:
             (mid for mid, kind in applied_hub_kinds.items() if kind == "ideation"), None
         ),
         "_retrieved_hub_references": sorted(retrieved_hub_refs) if retrieved_hub_refs else [],
-        "_tool_call_count": sum(
-            len(getattr(msg, "tool_calls", None) or []) for msg in messages if isinstance(msg, AIMessage)
+        "_tool_call_count": tool_call_count,
+        "_tool_names_used": tool_names,
+        "_workflow_eligible": _workflow_eligible(
+            run_success=run_ok, tool_names=tool_names, tool_call_count=tool_call_count
         ),
         "_token_cost": _provider_reported_token_cost(messages),
         "_agent_metadata": {

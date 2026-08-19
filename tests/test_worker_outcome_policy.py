@@ -1,6 +1,20 @@
 from evomemory_sync.worker import _record_allowed_for_outcome
 
 
+def test_successful_run_may_publish_workflow():
+    assert _record_allowed_for_outcome(
+        {"run_success_flag": True},
+        {"memory_type": "workflow"},
+    )
+
+
+def test_failed_run_cannot_publish_workflow():
+    assert not _record_allowed_for_outcome(
+        {"run_success_flag": False},
+        {"memory_type": "workflow"},
+    )
+
+
 def test_successful_run_may_publish_recipe():
     assert _record_allowed_for_outcome(
         {"run_success_flag": True},

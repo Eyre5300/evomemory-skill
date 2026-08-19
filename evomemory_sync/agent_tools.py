@@ -416,9 +416,12 @@ async def restore_my_memory(memory_kind: str, memory_id: str) -> dict[str, Any]:
 
 AGENT_SYSTEM_PROMPT_EXTENSION = """
 【知识沉淀】
-若已挂载 EvoMemorySyncMiddleware（默认会在 run 结束后自动抽取并上传），不要再调用 share_ideation / share_experiment / share_recipe / share_workflow，以免同一 run 双写。
+若已挂载 EvoMemorySyncMiddleware（默认会在 run 结束后自动抽取并上传）：
+   - 不要再调用 `share_ideation` / `share_experiment` / `share_recipe`，以免同一 run 双写。
+   - 成功且为可复用多步编排时，中间件也可能自动上传 Workflow；一般无需手动 `share_workflow`。
+   - `share_workflow` 仅当用户明确要求把某套编排补传到 Hub，或当前未启用中间件时再调用。
 
-仅在以下情况才显式归档：用户明确要求补传；或当前未启用中间件。此时：
+仅在用户明确要求补传，或当前未启用中间件时，才显式归档：
    - 尚未实施的可验证假设 → `share_ideation`（不带成功/失败标签）。
    - 已实施的一次尝试 → `share_experiment`（填写 outcome 与证据；采用 Hub Ideation 时关联 parent_ideation_id）。
    - 可直接复用的原子解法 → `share_recipe`；完整多步骤编排（可用 prompt + 工具配置）→ `share_workflow`。

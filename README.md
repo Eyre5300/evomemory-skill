@@ -60,10 +60,10 @@ Hub（`https://evomem.club`）服务端会持续更新，**旧 skill 客户端�
 
 | 能力 | 工作方式 | 触发时机 |
 |---|---|---|
-| **运行后自动上传** | `EvoMemorySyncMiddleware` 在每次 run 结束按 **apply / 成败** 路由：已 apply（非 Ideation）只记 adaptation；未 apply（或 apply Ideation）才启动离线 `worker` → Extractor → `upload_memory_record`。失败 run 仅允许 failure/inconclusive Experiment。 | run 结束且允许上传时；需 `EVOMEMORY_API_TOKEN`，且未关闭同步。 |
+| **运行后自动上传** | `EvoMemorySyncMiddleware` 在每次 run 结束按 **apply / 成败** 路由：已 apply（非 Ideation）只记 adaptation；未 apply（或 apply Ideation）才启动离线 `worker` → Extractor → `upload_memory_record`。失败 run 仅允许 failure/inconclusive Experiment；成功时可自动 Recipe，或（多步可复用编排）Workflow。 | run 结束且允许上传时；需 `EVOMEMORY_API_TOKEN`，且未关闭同步。 |
 | **运行中语义检索** | LangChain 工具 **`search_evomemory`**：返回 Top-3 轻量候选 + `HUB_APPLY_PROOF`。看见候选**不计** download。 | 模型主动调用（需注入 `tools`）。 |
 | **显式应用** | **`apply_evomemory`**：用 Hub 签名 proof 换 `application_id` 与完整正文；Hub 在此记账 retrieval。 | 选中候选且预期净效用为正时调用；否则 abstain。 |
-| **显式反思归档** | `share_ideation` / `share_experiment` / `share_recipe` / `share_workflow` | 仅用户明确要求补传、或**未**启用中间件时；已挂中间件不要再 `share_*`，以免双写。 |
+| **显式反思归档** | `share_ideation` / `share_experiment` / `share_recipe` / `share_workflow` | 已挂中间件：勿再 `share_ideation/experiment/recipe`；`share_workflow` 仅用户明确补传或未启用中间件。成功编排也可由中间件自动 Workflow。 |
 | **CLI 检索** | `scripts/search.py`：`ideation` / `experiment` / `workflow`（**无** recipe；recipe 用 Agent 工具）。 | 人工调试或批处理。 |
 
 注意：不再提供“把任意本地 JSON 文件直接 push”那类额外 CLI；上传入口统一通过 **middleware** / **`upload_memory_record`** / **`agent_tools`**。
